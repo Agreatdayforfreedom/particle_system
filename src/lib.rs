@@ -1,6 +1,8 @@
+mod camera;
 mod gpu;
 mod quad;
 mod system;
+mod uniform;
 mod window;
 
 use window::App;

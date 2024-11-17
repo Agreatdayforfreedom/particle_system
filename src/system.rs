@@ -1,19 +1,25 @@
 use wgpu::util::DeviceExt;
 
-use crate::quad::{Quad, VERTICES};
+use crate::{
+    camera::{Camera, CameraUniform},
+    quad::{Quad, VERTICES},
+    uniform::Uniform,
+};
 
 pub struct System {
+    camera: Camera,
     pipeline: wgpu::RenderPipeline,
     buffer: wgpu::Buffer,
 }
 
 impl System {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let shader = device.create_shader_module(wgpu::include_wgsl!("./shaders/shader.wgsl"));
+        let camera = Camera::new(Uniform::<CameraUniform>::new(&device));
 
+        let shader = device.create_shader_module(wgpu::include_wgsl!("./shaders/shader.wgsl"));
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Main_pipeline_layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&camera.uniform.bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -26,13 +32,18 @@ impl System {
         let pipeline = create_render_pipeline(device, &shader, config.format, &pipeline_layout);
 
         Self {
+            camera,
+
             pipeline,
             buffer: quad_buffer,
         }
     }
 
     pub fn input() {}
-    pub fn update() {}
+    pub fn update(&mut self, queue: &wgpu::Queue) {
+        self.camera.update((0.0, 0.0, 0.0).into());
+        self.camera.uniform.write(queue);
+    }
 
     pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, surface: &wgpu::Surface) {
         let frame = surface
@@ -52,12 +63,7 @@ impl System {
                     view: &context_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.4,
-                            g: 0.5,
-                            b: 0.7,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -66,6 +72,8 @@ impl System {
                 occlusion_query_set: None,
             });
             rpass.set_pipeline(&self.pipeline);
+            rpass.set_bind_group(0, &self.camera.uniform.bind_group, &[]);
+
             rpass.set_vertex_buffer(0, self.buffer.slice(..));
 
             rpass.draw(0..6, 0..1);

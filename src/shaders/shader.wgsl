@@ -1,5 +1,12 @@
 
 
+struct Camera {
+    proj: mat4x4f,
+}
+
+@group(0) @binding(0)
+var<uniform> camera: Camera;
+
 struct In {
     @location(0) position: vec2f,
     @location(1) tex_coords: vec2f,
@@ -15,7 +22,7 @@ struct Out {
 fn vs_main(in: In) -> Out {
     var out: Out;
 
-    out.clip_position = vec4<f32>(in.position, 0.0, 1.0);
+    out.clip_position = camera.proj * vec4<f32>(in.position, 0.0, 1.0);
     out.tex_coords = in.tex_coords;
     out.color = vec4f(0.0, 1.0, 1.0, 1.0);
     return out;
