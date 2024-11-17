@@ -47,7 +47,7 @@ impl System {
         // compute
         let particle_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Particle Buffer")),
-            size: 4 * 4 * PARTICLE_POOLING,
+            size: 6 * 4 * PARTICLE_POOLING,
             usage: wgpu::BufferUsages::VERTEX
                 | wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST,
@@ -56,7 +56,7 @@ impl System {
 
         let simulation_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Compute Buffer"),
-            contents: bytemuck::bytes_of(&[0.0, 1.0]), //dummy data
+            contents: bytemuck::bytes_of(&[0.0, 0.0]), //dummy data
             usage: wgpu::BufferUsages::UNIFORM
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::STORAGE,
@@ -117,7 +117,13 @@ impl System {
     }
 
     pub fn input() {}
-    pub fn update(&mut self, queue: &wgpu::Queue) {
+    pub fn update(&mut self, queue: &wgpu::Queue, dt: instant::Duration) {
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[dt.as_secs_f32()]),
+        );
+
         self.camera.update((0.0, 0.0, 0.0).into());
         self.camera.uniform.write(queue);
     }
@@ -188,7 +194,7 @@ pub fn create_render_pipeline(
             buffers: &[
                 Quad::desc(),
                 wgpu::VertexBufferLayout {
-                    array_stride: 4 * 4,
+                    array_stride: 6 * 4,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &[
                         //position

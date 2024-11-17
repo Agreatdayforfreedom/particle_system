@@ -30,6 +30,8 @@ struct Uniforms {
 struct Particle {
   position: vec2f,
   dir: vec2f,
+  velocity: f32,
+  lifetime: f32,
   // color: vec4f,
   // velocity: f32,
   // lifetime: f32,
@@ -52,16 +54,23 @@ fn simulate(@builtin(global_invocation_id) global_invocation_id : vec3u) {
     }
     
     var particle: Particle = particles_dst[idx];
-    init_rand(idx, vec4f(particle.position.x, particle.position.y, uniforms.delta_time * 1.4, uniforms.delta_time));
+    init_rand(idx, vec4f(particle.position.x, particle.position.y, -uniforms.delta_time, uniforms.delta_time));
 
-    let angle = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
+    if (particle.lifetime <= 0.0) {
 
-    let x = cos(radians(angle));
-    let y = sin(radians(angle));
-    let dir = normalize(vec2f(x, y));
+      let angle = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
 
-    particle.dir = dir;
-    particle.position.x += 200.0 * particle.dir.x * 0.04;
-    particle.position.y += 200.0 * particle.dir.y * 0.04;
+      let x = cos(radians(angle));
+      let y = sin(radians(angle));
+      let dir = normalize(vec2f(x, y));
+      particle.dir = dir;
+      particle.velocity = gen_range(50.0, 150.0);
+      particle.lifetime = rand();
+      particle.position = vec2f(0.0, 0.0);
+    }
+    
+    particle.lifetime -= uniforms.delta_time;
+    particle.position.x += particle.velocity * particle.dir.x * uniforms.delta_time;
+    particle.position.y += particle.velocity * particle.dir.y * uniforms.delta_time;
     particles_dst[idx] = particle;
 }

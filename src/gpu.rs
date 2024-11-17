@@ -81,7 +81,7 @@ impl GpuState {
         }
     }
     pub fn update(&mut self, dt: instant::Duration) {
-        self.system.update(&self.queue);
+        self.system.update(&self.queue, dt);
         // println!("FPS: {}", 1.0 / dt.as_secs_f64());
     }
     pub fn render(&mut self) {
