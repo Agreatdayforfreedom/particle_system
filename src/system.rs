@@ -6,10 +6,23 @@ use crate::{
     uniform::Uniform,
 };
 
+const PARTICLE_POOLING: u64 = 10000;
+
 pub struct System {
     camera: Camera,
     pipeline: wgpu::RenderPipeline,
-    buffer: wgpu::Buffer,
+    compute_pipeline: wgpu::ComputePipeline,
+
+    vertex_buffer: wgpu::Buffer,
+    simulation_buffer: wgpu::Buffer,
+    particle_buffer: wgpu::Buffer,
+    uniform_buffer: wgpu::Buffer,
+
+    /// contains all the data to compute the paricles. \
+    /// holds the *particles buffer* at **@binding(0)** \
+    /// holds the *simulation params buffer* at **@binding(1)** \
+    /// holds the *delta time buffer* at **@binding(2)**
+    bind_group: wgpu::BindGroup,
 }
 
 impl System {
@@ -17,25 +30,89 @@ impl System {
         let camera = Camera::new(Uniform::<CameraUniform>::new(&device));
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("./shaders/shader.wgsl"));
+        let compute_shader =
+            device.create_shader_module(wgpu::include_wgsl!("./shaders/vfx_compute.wgsl"));
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Main_pipeline_layout"),
             bind_group_layouts: &[&camera.uniform.bind_group_layout],
             push_constant_ranges: &[],
         });
 
-        let quad_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&VERTICES),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
+        // compute
+        let particle_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&format!("Particle Buffer")),
+            size: 4 * 4 * PARTICLE_POOLING,
+            usage: wgpu::BufferUsages::VERTEX
+                | wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let simulation_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Uniform Compute Buffer"),
+            contents: bytemuck::bytes_of(&[0.0, 1.0]), //dummy data
+            usage: wgpu::BufferUsages::UNIFORM
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::STORAGE,
+        });
+
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Uniform Compute Buffer"),
+            contents: bytemuck::bytes_of(&[0.0]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &create_compute_bind_group_layout(device),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: particle_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: simulation_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+            ],
+            label: None,
+        });
+
         let pipeline = create_render_pipeline(device, &shader, config.format, &pipeline_layout);
+        let compute_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Compute Pipeline Layout"),
+                bind_group_layouts: &[&create_compute_bind_group_layout(device)],
+                push_constant_ranges: &[],
+            });
+
+        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Particles compute pipeline"),
+            layout: Some(&compute_pipeline_layout),
+            module: &compute_shader,
+            entry_point: Some("simulate"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
+        });
 
         Self {
             camera,
-
+            bind_group,
+            particle_buffer,
+            simulation_buffer,
+            uniform_buffer,
+            vertex_buffer,
             pipeline,
-            buffer: quad_buffer,
+            compute_pipeline,
         }
     }
 
@@ -57,6 +134,15 @@ impl System {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         {
+            let mut rpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: None,
+                timestamp_writes: None,
+            });
+            rpass.set_pipeline(&self.compute_pipeline);
+            rpass.set_bind_group(0, &self.bind_group, &[]);
+            rpass.dispatch_workgroups((PARTICLE_POOLING as f32 / 64.0).ceil() as u32, 1, 1);
+        }
+        {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -74,9 +160,10 @@ impl System {
             rpass.set_pipeline(&self.pipeline);
             rpass.set_bind_group(0, &self.camera.uniform.bind_group, &[]);
 
-            rpass.set_vertex_buffer(0, self.buffer.slice(..));
+            rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            rpass.set_vertex_buffer(1, self.particle_buffer.slice(..));
 
-            rpass.draw(0..6, 0..1);
+            rpass.draw(0..6, 0..PARTICLE_POOLING as u32);
         }
 
         queue.submit(Some(encoder.finish()));
@@ -98,7 +185,26 @@ pub fn create_render_pipeline(
             module: &shader,
             entry_point: Some("vs_main"),
             compilation_options: Default::default(),
-            buffers: &[Quad::desc()],
+            buffers: &[
+                Quad::desc(),
+                wgpu::VertexBufferLayout {
+                    array_stride: 4 * 4,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &[
+                        //position
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 0,
+                            shader_location: 1,
+                        },
+                        // wgpu::VertexAttribute { // dir?
+                        //     format: wgpu::VertexFormat::Float32x2,
+                        //     offset: 8,
+                        //     shader_location: 1,
+                        // },
+                    ],
+                },
+            ],
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
@@ -122,5 +228,43 @@ pub fn create_render_pipeline(
         multisample: wgpu::MultisampleState::default(),
         multiview: None,
         cache: None,
+    })
+}
+
+fn create_compute_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Particle Bind Group Layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
     })
 }

@@ -8,5 +8,6 @@ bytemuck = {version = "1.19.0", features = ["derive"]}
 cgmath = "0.18.0"
 instant = "0.1.13"
 pollster = "0.4.0"
+rand = "0.8.5"
 wgpu = "23.0.0"
 winit = "0.30.5"

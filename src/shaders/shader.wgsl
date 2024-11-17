@@ -8,13 +8,12 @@ struct Camera {
 var<uniform> camera: Camera;
 
 struct In {
-    @location(0) position: vec2f,
-    @location(1) tex_coords: vec2f,
+    @location(0) vertex_position: vec2f,
+    @location(1) position: vec2f,
 }
 
 struct Out {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) tex_coords: vec2<f32>,
     @location(1) color: vec4<f32>,
 }
 
@@ -22,8 +21,7 @@ struct Out {
 fn vs_main(in: In) -> Out {
     var out: Out;
 
-    out.clip_position = camera.proj * vec4<f32>(in.position, 0.0, 1.0);
-    out.tex_coords = in.tex_coords;
+    out.clip_position = camera.proj * vec4<f32>(in.vertex_position + in.position, 0.0, 1.0);
     out.color = vec4f(0.0, 1.0, 1.0, 1.0);
     return out;
 }

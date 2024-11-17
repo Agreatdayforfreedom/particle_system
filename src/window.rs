@@ -43,7 +43,7 @@ impl ApplicationHandler for App {
         let state = if let Some(state) = &mut self.state {
             state
         } else {
-            panic!("NO state")
+            panic!("No Window state found.")
         };
 
         if !state.input(&event) {
@@ -53,7 +53,6 @@ impl ApplicationHandler for App {
                     event_loop.exit();
                 }
                 WindowEvent::RedrawRequested => {
-                    println!("hello");
                     let now = instant::Instant::now();
                     let dt = now - self.time;
                     self.time = now;
