@@ -58,14 +58,14 @@ fn simulate(@builtin(global_invocation_id) global_invocation_id : vec3u) {
 
     if (particle.lifetime <= 0.0) {
 
-      let angle_a = degrees(gen_range(0.0, 1.0)  * PI);
-      let angle_b = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
+      // let angle_a = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
+      // let angle_b = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
 
-      let x = sin(radians(angle_b)) * cos(radians(angle_a));
-      let y = sin(radians(angle_b)) * sin(radians(angle_a));
-      let z = cos(radians(angle_b));
-      let dir = normalize(vec3f(x, y, 1.0));
-      particle.dir = dir;
+      // let x = sin(radians(angle_b)) * cos(radians(angle_a));
+      // let y = sin(radians(angle_b)) * sin(radians(angle_a));
+      // let z = cos(radians(angle_b));
+      // let dir = normalize(vec3f(x, y, 1.0));
+      // particle.dir = dir;
       particle.velocity = gen_range(50.0, 150.0);
       particle.lifetime = rand();
       particle.position = vec3f(0.0, 0.0, 0.0);

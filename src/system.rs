@@ -1,13 +1,51 @@
-use wgpu::util::DeviceExt;
-use winit::event::WindowEvent;
+use core::f32;
 
 use crate::{
     camera::{Camera2D, Camera2DUniform, Camera3D, Camera3DUniform, CameraController},
     quad::{Quad, VERTICES},
     uniform::Uniform,
 };
+use cgmath::{InnerSpace, Vector3};
+use rand::Rng;
+use wgpu::util::DeviceExt;
+use winit::event::WindowEvent;
 
 const PARTICLE_POOLING: u64 = 10000;
+
+fn dv() -> Vector3<f32> {
+    let mut rng = rand::thread_rng();
+
+    let theta = rng.gen_range(0.0..2.0 * f32::consts::PI);
+    let phi = rng.gen_range(0.0..f32::consts::PI);
+
+    let x = phi.sin() * theta.cos();
+    let y = phi.sin() * theta.sin();
+    let z = phi.cos();
+
+    cgmath::Vector3::new(x, y, z).normalize()
+}
+
+fn generate_particles() -> Vec<f32> {
+    let mut particles = vec![0.0f32; 8 * PARTICLE_POOLING as usize];
+
+    for chunk in particles.chunks_mut(8) {
+        // pos
+        chunk[0] = 0.0;
+        chunk[1] = 0.0;
+        chunk[2] = 0.0;
+        //velocity
+        chunk[3] = 0.0;
+        let dir = dv();
+        //dir
+        chunk[4] = dir.x;
+        chunk[5] = dir.y;
+        chunk[6] = dir.z;
+
+        //lifetime
+        chunk[7] = 0.0;
+    }
+    particles
+}
 
 pub struct System {
     camera: Camera3D,
@@ -47,14 +85,21 @@ impl System {
         });
 
         // compute
-        let particle_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(&format!("Particle Buffer")),
-            size: 8 * 4 * PARTICLE_POOLING,
+        let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Particle Buffer"),
+            contents: bytemuck::cast_slice(&generate_particles()),
             usage: wgpu::BufferUsages::VERTEX
                 | wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         });
+        // let particle_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        //     label: Some(&format!("Particle Buffer")),
+        //     size: 8 * 4 * PARTICLE_POOLING,
+        //     usage: wgpu::BufferUsages::VERTEX
+        //         | wgpu::BufferUsages::STORAGE
+        //         | wgpu::BufferUsages::COPY_DST,
+        //     mapped_at_creation: false,
+        // });
 
         let simulation_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Compute Buffer"),
