@@ -1,7 +1,8 @@
 use wgpu::util::DeviceExt;
+use winit::event::WindowEvent;
 
 use crate::{
-    camera::{Camera, CameraUniform},
+    camera::{Camera2D, Camera2DUniform, Camera3D, Camera3DUniform, CameraController},
     quad::{Quad, VERTICES},
     uniform::Uniform,
 };
@@ -9,7 +10,8 @@ use crate::{
 const PARTICLE_POOLING: u64 = 10000;
 
 pub struct System {
-    camera: Camera,
+    camera: Camera3D,
+    camera_controller: CameraController,
     pipeline: wgpu::RenderPipeline,
     compute_pipeline: wgpu::ComputePipeline,
 
@@ -27,7 +29,7 @@ pub struct System {
 
 impl System {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let camera = Camera::new(Uniform::<CameraUniform>::new(&device));
+        let mut camera = Camera3D::new(Uniform::<Camera3DUniform>::new(&device));
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("./shaders/shader.wgsl"));
         let compute_shader =
@@ -37,7 +39,7 @@ impl System {
             bind_group_layouts: &[&camera.uniform.bind_group_layout],
             push_constant_ranges: &[],
         });
-
+        camera.build_view_projection_matrix();
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&VERTICES),
@@ -47,7 +49,7 @@ impl System {
         // compute
         let particle_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Particle Buffer")),
-            size: 6 * 4 * PARTICLE_POOLING,
+            size: 8 * 4 * PARTICLE_POOLING,
             usage: wgpu::BufferUsages::VERTEX
                 | wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST,
@@ -106,6 +108,7 @@ impl System {
 
         Self {
             camera,
+            camera_controller: CameraController::new(2.0),
             bind_group,
             particle_buffer,
             simulation_buffer,
@@ -116,7 +119,9 @@ impl System {
         }
     }
 
-    pub fn input() {}
+    pub fn input(&mut self, event: &WindowEvent) -> bool {
+        self.camera_controller.process_events(event)
+    }
     pub fn update(&mut self, queue: &wgpu::Queue, dt: instant::Duration) {
         queue.write_buffer(
             &self.uniform_buffer,
@@ -124,6 +129,8 @@ impl System {
             bytemuck::cast_slice(&[dt.as_secs_f32()]),
         );
 
+        self.camera_controller.update_camera(&mut self.camera);
+        self.camera.build_view_projection_matrix();
         self.camera.update((0.0, 0.0, 0.0).into());
         self.camera.uniform.write(queue);
     }
@@ -194,12 +201,12 @@ pub fn create_render_pipeline(
             buffers: &[
                 Quad::desc(),
                 wgpu::VertexBufferLayout {
-                    array_stride: 6 * 4,
+                    array_stride: 8 * 4,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &[
                         //position
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
+                            format: wgpu::VertexFormat::Float32x3,
                             offset: 0,
                             shader_location: 1,
                         },

@@ -9,7 +9,7 @@ var<uniform> camera: Camera;
 
 struct In {
     @location(0) vertex_position: vec2f,
-    @location(1) position: vec2f,
+    @location(1) position: vec3f,
 }
 
 struct Out {
@@ -21,7 +21,7 @@ struct Out {
 fn vs_main(in: In) -> Out {
     var out: Out;
 
-    out.clip_position = camera.proj * vec4<f32>(in.vertex_position + in.position, 0.0, 1.0);
+    out.clip_position = camera.proj * vec4<f32>(vec3f(in.vertex_position, 0.0) + in.position, 1.0);
     out.color = vec4f(0.0, 1.0, 1.0, 1.0);
     return out;
 }

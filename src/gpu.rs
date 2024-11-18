@@ -75,10 +75,7 @@ impl GpuState {
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         // false
-        match event {
-            WindowEvent::KeyboardInput { event, .. } => true,
-            _ => false,
-        }
+        self.system.input(event)
     }
     pub fn update(&mut self, dt: instant::Duration) {
         self.system.update(&self.queue, dt);
