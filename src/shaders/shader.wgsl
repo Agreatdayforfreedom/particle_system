@@ -20,8 +20,18 @@ struct Out {
 @vertex
 fn vs_main(in: In) -> Out {
     var out: Out;
+    
+     let toCamera = normalize(vec3(0.0, 1.0, 2.0) - in.position);
 
-    out.clip_position = camera.proj * vec4<f32>(vec3f(in.vertex_position, 0.0) + in.position, 1.0);
+    let right = normalize(vec3<f32>(toCamera.z, 0.0, -toCamera.x)); // Perpendicular to Y-axis
+    let up = vec3<f32>(0.0, 1.0, 0.0);
+
+    let worldPosition = in.position
+                        + right * in.vertex_position.x
+                        + up * in.vertex_position.y;
+
+
+    out.clip_position = camera.proj * vec4<f32>(worldPosition, 1.0);
     out.color = vec4f(0.0, 1.0, 1.0, 1.0);
     return out;
 }

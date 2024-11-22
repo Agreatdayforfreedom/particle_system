@@ -6,22 +6,22 @@ pub struct Quad {
 
 pub const VERTICES: &[Quad] = &[
     Quad {
-        position: [0.0, 1.0],
+        position: [0.0, 0.5],
     },
     Quad {
-        position: [1.0, 0.0],
+        position: [0.5, 0.0],
     },
     Quad {
         position: [0.0, 0.0],
     },
     Quad {
-        position: [0.0, 1.0],
+        position: [0.0, 0.5],
     },
     Quad {
-        position: [1.0, 1.0],
+        position: [0.5, 0.5],
     },
     Quad {
-        position: [1.0, 0.0],
+        position: [0.5, 0.0],
     },
 ];
 

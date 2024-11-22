@@ -72,7 +72,7 @@ impl Default for Camera2DUniform {
 }
 
 pub struct Camera3D {
-    eye: cgmath::Point3<f32>,
+    pub eye: cgmath::Point3<f32>,
     target: cgmath::Point3<f32>,
     up: cgmath::Vector3<f32>,
     aspect: f32,

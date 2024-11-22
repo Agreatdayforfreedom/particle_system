@@ -57,6 +57,7 @@ pub struct System {
     simulation_buffer: wgpu::Buffer,
     particle_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
+    camera_pos_uniform: Uniform<f32>,
 
     /// contains all the data to compute the paricles. \
     /// holds the *particles buffer* at **@binding(0)** \
@@ -158,6 +159,7 @@ impl System {
             particle_buffer,
             simulation_buffer,
             uniform_buffer,
+            camera_pos_uniform: Uniform::<f32>::new(&device),
             vertex_buffer,
             pipeline,
             compute_pipeline,
