@@ -10,7 +10,7 @@ use rand::Rng;
 use wgpu::util::DeviceExt;
 use winit::event::WindowEvent;
 
-const PARTICLE_POOLING: u64 = 10000;
+const PARTICLE_POOLING: u64 = 2000000;
 
 fn dv() -> Vector3<f32> {
     let mut rng = rand::thread_rng();
@@ -275,10 +275,14 @@ pub fn create_render_pipeline(
                 blend: Some(wgpu::BlendState {
                     color: wgpu::BlendComponent {
                         src_factor: wgpu::BlendFactor::SrcAlpha,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        dst_factor: wgpu::BlendFactor::One,
                         operation: wgpu::BlendOperation::Add,
                     },
-                    alpha: wgpu::BlendComponent::OVER,
+                    alpha: wgpu::BlendComponent {
+                        src_factor: wgpu::BlendFactor::Zero,
+                        dst_factor: wgpu::BlendFactor::One,
+                        operation: wgpu::BlendOperation::Add,
+                    },
                 }),
                 write_mask: wgpu::ColorWrites::all(),
             })],

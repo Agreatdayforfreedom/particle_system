@@ -32,7 +32,7 @@ fn vs_main(in: In) -> Out {
 
 
     out.clip_position = camera.proj * vec4<f32>(worldPosition, 1.0);
-    out.color = vec4f(0.0, 1.0, 1.0, 1.0);
+    out.color = vec4f(0.6, 0.2, 0.6, 1.0);
     return out;
 }
 
