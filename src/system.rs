@@ -10,7 +10,7 @@ use rand::Rng;
 use wgpu::util::DeviceExt;
 use winit::event::WindowEvent;
 
-const PARTICLE_POOLING: u64 = 2000000;
+const PARTICLE_POOLING: u64 = 20000;
 
 fn dv() -> Vector3<f32> {
     let mut rng = rand::thread_rng();
@@ -57,8 +57,7 @@ pub struct System {
     simulation_buffer: wgpu::Buffer,
     particle_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
-    camera_pos_uniform: Uniform<f32>,
-
+    // camera_pos_uniform: Uniform<CameraPosition>,
     /// contains all the data to compute the paricles. \
     /// holds the *particles buffer* at **@binding(0)** \
     /// holds the *simulation params buffer* at **@binding(1)** \
@@ -159,7 +158,7 @@ impl System {
             particle_buffer,
             simulation_buffer,
             uniform_buffer,
-            camera_pos_uniform: Uniform::<f32>::new(&device),
+            // camera_pos_uniform: Uniform::<f32>::new(&device),
             vertex_buffer,
             pipeline,
             compute_pipeline,
@@ -170,15 +169,16 @@ impl System {
         self.camera_controller.process_events(event)
     }
     pub fn update(&mut self, queue: &wgpu::Queue, dt: instant::Duration) {
+        self.camera_controller.update_camera(&mut self.camera);
+        self.camera.build_view_projection_matrix();
+        self.camera.update((0.0, 0.0, 0.0).into());
+
         queue.write_buffer(
             &self.uniform_buffer,
             0,
             bytemuck::cast_slice(&[dt.as_secs_f32()]),
         );
 
-        self.camera_controller.update_camera(&mut self.camera);
-        self.camera.build_view_projection_matrix();
-        self.camera.update((0.0, 0.0, 0.0).into());
         self.camera.uniform.write(queue);
     }
 
@@ -331,4 +331,18 @@ fn create_compute_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLay
             },
         ],
     })
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct CameraPosition {
+    position: [f32; 3],
+}
+
+impl Default for CameraPosition {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0],
+        }
+    }
 }

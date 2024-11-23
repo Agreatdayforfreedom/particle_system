@@ -98,7 +98,9 @@ impl Camera3D {
     pub fn build_view_projection_matrix(&mut self) {
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
-        self.uniform.data.proj = (OPENGL_TO_WGPU_MATRIX * proj * view).into();
+        self.uniform.data.proj = (OPENGL_TO_WGPU_MATRIX * proj).into();
+        self.uniform.data.view = view.into();
+        self.uniform.data.position = self.eye.into();
     }
 
     pub fn update(&mut self, position: Vector3<f32>) {}
@@ -108,6 +110,9 @@ impl Camera3D {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Camera3DUniform {
     pub proj: [[f32; 4]; 4],
+    pub view: [[f32; 4]; 4],
+    pub position: [f32; 3],
+    _padding: u32,
 }
 
 impl Default for Camera3DUniform {
@@ -115,6 +120,9 @@ impl Default for Camera3DUniform {
         use cgmath::SquareMatrix;
         Self {
             proj: cgmath::Matrix4::identity().into(),
+            view: cgmath::Matrix4::identity().into(),
+            position: [0.0, 0.0, 0.0],
+            _padding: 0,
         }
     }
 }
