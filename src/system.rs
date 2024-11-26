@@ -69,7 +69,7 @@ impl System {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
         let mut camera = Camera3D::new(Uniform::<Camera3DUniform>::new(&device));
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("./shaders/shader.wgsl"));
+        let shader = device.create_shader_module(wgpu::include_wgsl!("./shaders/vfx_render.wgsl"));
         let compute_shader =
             device.create_shader_module(wgpu::include_wgsl!("./shaders/vfx_compute.wgsl"));
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
