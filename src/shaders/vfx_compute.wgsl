@@ -31,11 +31,6 @@ struct Particle {
   position: vec4f,
   dir: vec3f,
   velocity: f32,
-  // lifetime: f32,
-  // color: vec4f,
-  // velocity: f32,
-  // lifetime: f32,
-  // actived: f32,
 }
 
 
@@ -58,14 +53,6 @@ fn simulate(@builtin(global_invocation_id) global_invocation_id : vec3u) {
 
     if (particle.position.w <= 0.0) {
 
-      // let angle_a = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
-      // let angle_b = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
-
-      // let x = sin(radians(angle_b)) * cos(radians(angle_a));
-      // let y = sin(radians(angle_b)) * sin(radians(angle_a));
-      // let z = cos(radians(angle_b));
-      // let dir = normalize(vec3f(x, y, 1.0));
-      // particle.dir = dir;
       particle.dir *= 0.1;
       particle.position = vec4(-particle.position.xyz * 0.1, particle.position.w);
       particle.position.w += 1.0;
@@ -74,8 +61,8 @@ fn simulate(@builtin(global_invocation_id) global_invocation_id : vec3u) {
     for (var i = 0; i < 4; i++) {
         let attractor = uniforms.attractors[i];
         let dist = vec3f(attractor.xyz - particle.position.xyz);
-          particle.dir +=  uniforms.delta_time *
-            (attractor.w * 10.0) *
+          particle.dir +=  uniforms.delta_time * uniforms.delta_time *
+            (attractor.w * 20.0) *
             normalize(dist) / (dot(dist, dist) + 10.0);
     }
 
