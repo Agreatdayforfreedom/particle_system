@@ -24,14 +24,14 @@ struct SimulationParams {
 
 struct Uniforms {
   delta_time: f32,
-  time: f32,
+  attractors: mat4x4f
 }
 
 struct Particle {
-  position: vec3f,
-  velocity: f32,
+  position: vec4f,
   dir: vec3f,
-  lifetime: f32,
+  velocity: f32,
+  // lifetime: f32,
   // color: vec4f,
   // velocity: f32,
   // lifetime: f32,
@@ -56,7 +56,7 @@ fn simulate(@builtin(global_invocation_id) global_invocation_id : vec3u) {
     var particle: Particle = particles_dst[idx];
     init_rand(idx, vec4f(particle.position.x, particle.position.y, particle.position.z, uniforms.delta_time));
 
-    if (particle.lifetime <= 0.0) {
+    if (particle.position.w <= 0.0) {
 
       // let angle_a = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
       // let angle_b = degrees(gen_range(0.0, 1.0) * 2.0 * PI);
@@ -66,14 +66,22 @@ fn simulate(@builtin(global_invocation_id) global_invocation_id : vec3u) {
       // let z = cos(radians(angle_b));
       // let dir = normalize(vec3f(x, y, 1.0));
       // particle.dir = dir;
-      particle.velocity = gen_range(50.0, 150.0);
-      particle.lifetime = rand();
-      particle.position = vec3f(0.0, 0.0, 0.0);
+      particle.dir *= 0.1;
+      particle.position = vec4(-particle.position.xyz * 0.1, particle.position.w);
+      particle.position.w += 1.0;
     }
 
-    particle.lifetime -= uniforms.delta_time;
-    particle.position.x += particle.velocity * particle.dir.x * uniforms.delta_time;
-    particle.position.y += particle.velocity * particle.dir.y * uniforms.delta_time;
-    particle.position.z += particle.velocity * particle.dir.z * uniforms.delta_time;
+    for (var i = 0; i < 4; i++) {
+        let attractor = uniforms.attractors[i];
+        let dist = vec3f(attractor.xyz - particle.position.xyz);
+          particle.dir +=  uniforms.delta_time *
+            (attractor.w * 10.0) *
+            normalize(dist) / (dot(dist, dist) + 10.0);
+    }
+
+    particle.position.x +=  particle.dir.x * uniforms.delta_time;
+    particle.position.y +=  particle.dir.y * uniforms.delta_time;
+    particle.position.z +=  particle.dir.z * uniforms.delta_time;
+    particle.position.w -=  0.0001 * uniforms.delta_time;
     particles_dst[idx] = particle;
 }

@@ -10,7 +10,7 @@ use rand::Rng;
 use wgpu::util::DeviceExt;
 use winit::event::WindowEvent;
 
-const PARTICLE_POOLING: u64 = 20000;
+const PARTICLE_POOLING: u64 = 1_000_000;
 
 fn dv() -> Vector3<f32> {
     let mut rng = rand::thread_rng();
@@ -29,20 +29,21 @@ fn generate_particles() -> Vec<f32> {
     let mut particles = vec![0.0f32; 8 * PARTICLE_POOLING as usize];
 
     for chunk in particles.chunks_mut(8) {
+        let mut rng = rand::thread_rng();
         // pos
-        chunk[0] = 0.0;
-        chunk[1] = 0.0;
-        chunk[2] = 0.0;
-        //velocity
+        chunk[0] = rng.gen_range(-10.0..10.0);
+        chunk[1] = rng.gen_range(-10.0..10.0);
+        chunk[2] = rng.gen_range(-10.0..10.0);
         chunk[3] = 0.0;
-        let dir = dv();
         //dir
-        chunk[4] = dir.x;
-        chunk[5] = dir.y;
-        chunk[6] = dir.z;
+        chunk[4] = rng.gen_range(-1.0..0.1);
+        chunk[5] = rng.gen_range(-1.0..0.1);
+        chunk[6] = rng.gen_range(-1.0..1.0);
+        //velocity
+        chunk[7] = rng.gen_range(-0.1..0.1);
 
         //lifetime
-        chunk[7] = 0.0;
+        // chunk[8] = 0.0;
     }
     particles
 }
@@ -57,12 +58,16 @@ pub struct System {
     simulation_buffer: wgpu::Buffer,
     particle_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
+
+    /**test */
+    attractors: [[f32; 4]; 4],
     // camera_pos_uniform: Uniform<CameraPosition>,
     /// contains all the data to compute the paricles. \
     /// holds the *particles buffer* at **@binding(0)** \
     /// holds the *simulation params buffer* at **@binding(1)** \
     /// holds the *delta time buffer* at **@binding(2)**
     bind_group: wgpu::BindGroup,
+    time: f64,
 }
 
 impl System {
@@ -108,10 +113,28 @@ impl System {
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::STORAGE,
         });
+        // for testing (pos.xyz, mass)
+
+        let attractors = [
+            [0.0, 0.0, 0.0, rand::thread_rng().gen_range(0.5..1.0)],
+            [0.0, 0.0, 0.0, rand::thread_rng().gen_range(0.5..1.0)],
+            [0.0, 0.0, 0.0, rand::thread_rng().gen_range(0.5..1.0)],
+            [0.0, 0.0, 0.0, rand::thread_rng().gen_range(0.5..1.0)],
+        ];
+        let flatten: Vec<f32> = attractors
+            .iter()
+            .flat_map(|row| row.iter().copied())
+            .collect();
+        let mut uniform_bytes: Vec<f32> = vec![0.0];
+        uniform_bytes.extend(flatten);
+        uniform_bytes.push(0.0);
+        uniform_bytes.push(0.0);
+        uniform_bytes.push(0.0);
+        //padding
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Compute Buffer"),
-            contents: bytemuck::bytes_of(&[0.0]),
+            contents: bytemuck::cast_slice(&uniform_bytes),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -159,9 +182,11 @@ impl System {
             simulation_buffer,
             uniform_buffer,
             // camera_pos_uniform: Uniform::<f32>::new(&device),
+            attractors,
             vertex_buffer,
             pipeline,
             compute_pipeline,
+            time: 0.0,
         }
     }
 
@@ -169,14 +194,38 @@ impl System {
         self.camera_controller.process_events(event)
     }
     pub fn update(&mut self, queue: &wgpu::Queue, dt: instant::Duration) {
+        self.time += dt.as_secs_f64();
         self.camera_controller.update_camera(&mut self.camera);
         self.camera.build_view_projection_matrix();
         self.camera.update((0.0, 0.0, 0.0).into());
 
+        for (i, attractor) in self.attractors.iter_mut().enumerate() {
+            *attractor = [
+                (self.time as f32 * (i as f32 + 4.0) * 7.5 * 20.0).sin() * 50.0,
+                (self.time as f32 * (i as f32 + 7.0) * 3.9 * 20.0).cos() * 50.0,
+                (self.time as f32 * (i as f32 + 3.0) * 5.3 * 20.0).sin()
+                    * (self.time as f32 * (i as f32 + 5.0) * 9.1).cos()
+                    * 100.0,
+                attractor[3],
+            ]
+            .into();
+        }
+
+        let flatten: Vec<f32> = self
+            .attractors
+            .iter()
+            .flat_map(|row| row.iter().copied())
+            .collect();
+        let mut uniform_bytes: Vec<f32> = vec![dt.as_secs_f32()];
+        uniform_bytes.extend(flatten);
+        uniform_bytes.push(0.0);
+        uniform_bytes.push(0.0);
+        uniform_bytes.push(0.0);
+
         queue.write_buffer(
             &self.uniform_buffer,
             0,
-            bytemuck::cast_slice(&[dt.as_secs_f32()]),
+            bytemuck::cast_slice(&uniform_bytes),
         );
 
         self.camera.uniform.write(queue);
@@ -253,7 +302,7 @@ pub fn create_render_pipeline(
                     attributes: &[
                         //position
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x3,
+                            format: wgpu::VertexFormat::Float32x4,
                             offset: 0,
                             shader_location: 1,
                         },

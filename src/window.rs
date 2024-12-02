@@ -4,7 +4,7 @@ use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
     event_loop::ActiveEventLoop,
-    window::{Window, WindowId},
+    window::{Fullscreen, Window, WindowId},
 };
 
 use crate::gpu::GpuState;
@@ -32,9 +32,9 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
+        window.set_fullscreen(Some(Fullscreen::Borderless(None)));
         self.time = instant::Instant::now();
         let state = GpuState::new(Arc::clone(&window));
-
         self.window = Some(window);
         self.state = Some(state);
     }
