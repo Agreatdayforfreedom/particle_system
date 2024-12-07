@@ -10,38 +10,49 @@ pub struct GpuState {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    window: Arc<Window>,
     system: System,
 }
 
 impl GpuState {
-    pub fn new(window: Arc<Window>) -> Self {
+    pub async fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
         println!("w:{}, h: {}", size.width, size.height);
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(Arc::clone(&window)).unwrap();
 
-        let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            force_fallback_adapter: false,
-            compatible_surface: Some(&surface),
-        }))
-        .unwrap();
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                force_fallback_adapter: false,
+                compatible_surface: Some(&surface),
+            })
+            .await
+            .unwrap();
         println!("{:?}", adapter.features());
-        let (device, mut queue) = block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                memory_hints: wgpu::MemoryHints::default(),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-            },
-            None,
-        ))
-        .unwrap();
+
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: None,
+                    memory_hints: wgpu::MemoryHints::default(),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let limits = device.limits();
+        #[cfg(target_arch = "wasm32")]
+        log::info!("{:?}", limits);
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -53,8 +64,8 @@ impl GpuState {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
+            width: size.width.max(800),
+            height: size.height.max(600), // setting this because Fullscreen does not work on web: https://developer.mozilla.org/en-US/docs/Glossary/Transient_activation
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
@@ -70,7 +81,12 @@ impl GpuState {
             queue,
             config,
             system,
+            window,
         }
+    }
+
+    pub fn window(&self) -> &Window {
+        self.window.as_ref()
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {

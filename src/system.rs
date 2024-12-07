@@ -10,7 +10,7 @@ use rand::Rng;
 use wgpu::util::DeviceExt;
 use winit::event::WindowEvent;
 
-const PARTICLE_POOLING: u64 = 1_000_000;
+const PARTICLE_POOLING: u64 = 100_000;
 
 fn dv() -> Vector3<f32> {
     let mut rng = rand::thread_rng();
