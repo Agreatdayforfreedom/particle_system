@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -30,11 +28,9 @@ impl Proxy {
                 console_log::init_with_level(log::Level::Debug).expect("Couldn't initialize logger");
             }
         }
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes())
-                .unwrap(),
-        );
+        let window = event_loop
+            .create_window(Window::default_attributes())
+            .unwrap();
         #[cfg(target_arch = "wasm32")]
         {
             use winit::platform::web::WindowExtWebSys;

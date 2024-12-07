@@ -1,8 +1,12 @@
-use pollster::block_on;
-use std::sync::Arc;
 use winit::{event::*, window::Window};
 
 use crate::system::System;
+
+#[cfg(target_arch = "wasm")]
+type Rc<T> = std::rc::Rc<T>;
+
+#[cfg(not(target_arch = "wasm"))]
+type Rc<T> = std::sync::Arc<T>;
 
 #[allow(dead_code)]
 pub struct GpuState {
@@ -10,13 +14,14 @@ pub struct GpuState {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    window: Arc<Window>,
+    window: Rc<Window>,
     system: System,
 }
 
 impl GpuState {
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new(window: Window) -> Self {
         let size = window.inner_size();
+        let window = Rc::new(window);
         println!("w:{}, h: {}", size.width, size.height);
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -25,7 +30,7 @@ impl GpuState {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(Arc::clone(&window)).unwrap();
+        let surface = instance.create_surface(Rc::clone(&window)).unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
