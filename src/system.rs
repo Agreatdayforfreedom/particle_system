@@ -10,6 +10,10 @@ use rand::Rng;
 use wgpu::util::DeviceExt;
 use winit::event::WindowEvent;
 
+#[cfg(target_arch = "wasm32")]
+const PARTICLE_POOLING: u64 = 100_000;
+
+#[cfg(not(target_arch = "wasm32"))]
 const PARTICLE_POOLING: u64 = 100_000;
 
 fn dv() -> Vector3<f32> {

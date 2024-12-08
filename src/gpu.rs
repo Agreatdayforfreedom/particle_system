@@ -2,10 +2,10 @@ use winit::{event::*, window::Window};
 
 use crate::system::System;
 
-#[cfg(target_arch = "wasm")]
+#[cfg(target_arch = "wasm32")]
 type Rc<T> = std::rc::Rc<T>;
 
-#[cfg(not(target_arch = "wasm"))]
+#[cfg(not(target_arch = "wasm32"))]
 type Rc<T> = std::sync::Arc<T>;
 
 #[allow(dead_code)]
