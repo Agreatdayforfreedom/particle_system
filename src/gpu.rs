@@ -1,4 +1,8 @@
-use winit::{event::*, window::Window};
+use std::num::NonZeroU32;
+
+use bytemuck::Contiguous;
+use wgpu::{SurfaceTexture, TextureFormat};
+use winit::{dpi::PhysicalSize, event::*, window::Window};
 
 use crate::system::System;
 
@@ -19,11 +23,20 @@ pub struct GpuState {
 }
 
 impl GpuState {
-    pub async fn new(window: Window) -> Self {
-        let size = window.inner_size();
+    pub async fn new(window: Window, size: PhysicalSize<u32>) -> Self {
         let window = Rc::new(window);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let size = window.inner_size();
+        #[cfg(target_arch = "wasm32")]
+        let size = size;
+
         println!("w:{}, h: {}", size.width, size.height);
 
+        #[cfg(target_arch = "wasm32")]
+        {
+            log::info!("Initial window size: {:?}", size);
+        }
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
@@ -60,12 +73,16 @@ impl GpuState {
         log::info!("{:?}", limits);
 
         let surface_caps = surface.get_capabilities(&adapter);
+
         let surface_format = surface_caps
             .formats
             .iter()
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
+
+        log::info!("surface caps: {:?}", &surface_caps);
+        log::info!("surface format: {:?}", &surface_format);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -102,6 +119,18 @@ impl GpuState {
         self.system.update(&self.queue, dt);
         // println!("FPS: {}", 1.0 / dt.as_secs_f64());
     }
+    pub fn resize(&mut self, size: PhysicalSize<u32>) {
+        let (width, height) = match (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) {
+            (Some(width), Some(height)) => (width, height),
+            _ => return,
+        };
+
+        self.config.width = width.into();
+        self.config.height = height.into();
+
+        self.surface.configure(&self.device, &self.config);
+    }
+
     pub fn render(&mut self) {
         self.system.render(&self.device, &self.queue, &self.surface);
     }

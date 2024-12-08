@@ -1,5 +1,8 @@
+#[allow(unused_imports)]
 use winit::{
     application::ApplicationHandler,
+    dpi::LogicalSize,
+    dpi::PhysicalSize,
     event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
     window::{Fullscreen, Window, WindowId},
@@ -31,13 +34,31 @@ impl Proxy {
         let window = event_loop
             .create_window(Window::default_attributes())
             .unwrap();
+
+        let mut size = window.inner_size();
         #[cfg(target_arch = "wasm32")]
         {
+            use wasm_bindgen::JsCast;
             use winit::platform::web::WindowExtWebSys;
+
             web_sys::window()
-                .and_then(|win| win.document())
+                .and_then(|win| {
+                    let width = win.inner_width().unwrap().as_f64().unwrap() as u32;
+                    let height = win.inner_height().unwrap().as_f64().unwrap() as u32;
+                    let factor = window.scale_factor();
+                    let logical = LogicalSize { width, height };
+
+                    let PhysicalSize { width, height }: PhysicalSize<u32> =
+                        logical.to_physical(factor);
+
+                    size = PhysicalSize::new(width, height);
+
+                    log::info!("window size configured from web_sys window: {:?}", size);
+
+                    win.document()
+                })
                 .and_then(|doc| {
-                    let dst = doc.get_element_by_id("main")?;
+                    let dst = doc.get_element_by_id("main").unwrap();
                     let canvas = web_sys::Element::from(window.canvas()?);
                     dst.append_child(&canvas).ok()?;
                     Some(())
@@ -49,7 +70,7 @@ impl Proxy {
 
         #[cfg(target_arch = "wasm32")]
         {
-            let gpu = GpuState::new(window);
+            let gpu = GpuState::new(window, size);
             wasm_bindgen_futures::spawn_local(async move {
                 let gpu = gpu.await;
                 assert!(proxy.send_event(gpu).is_ok());
@@ -59,7 +80,9 @@ impl Proxy {
         #[cfg(not(target_arch = "wasm32"))]
         {
             use pollster::FutureExt;
-            assert!(proxy.send_event(GpuState::new(window).block_on()).is_ok());
+            assert!(proxy
+                .send_event(GpuState::new(window, size).block_on())
+                .is_ok());
         }
     }
 }
@@ -93,6 +116,7 @@ impl ApplicationHandler<GpuState> for App {
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, gpu: GpuState) {
+        log::info!("Gpu initialized correctly!");
         self.state = Ready(gpu);
     }
 
@@ -107,6 +131,10 @@ impl ApplicationHandler<GpuState> for App {
                 WindowEvent::CloseRequested => {
                     println!("The close button was pressed; stopping");
                     event_loop.exit();
+                }
+                WindowEvent::Resized(new_size) => {
+                    log::info!("Resizing: {:?}", new_size);
+                    state.resize(new_size);
                 }
                 WindowEvent::RedrawRequested => {
                     let now = instant::Instant::now();
