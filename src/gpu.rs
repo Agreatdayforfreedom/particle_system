@@ -5,6 +5,7 @@ use wgpu::{SurfaceTexture, TextureFormat};
 use winit::{dpi::PhysicalSize, event::*, window::Window};
 
 use crate::system::System;
+use crate::window::InputEvent;
 
 #[cfg(target_arch = "wasm32")]
 type Rc<T> = std::rc::Rc<T>;
@@ -111,7 +112,7 @@ impl GpuState {
         self.window.as_ref()
     }
 
-    pub fn input(&mut self, event: &WindowEvent) -> bool {
+    pub fn input(&mut self, event: InputEvent) -> bool {
         // false
         self.system.input(event)
     }

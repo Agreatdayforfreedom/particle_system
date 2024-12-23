@@ -1,11 +1,12 @@
 // this is a 2d camera
-use cgmath::{
-    Array, EuclideanSpace, InnerSpace, Matrix4, Point3, SquareMatrix, Transform, Vector2, Vector3,
-};
+use crate::uniform::Uniform;
+use cgmath::{Matrix4, Rad, Vector2, Vector3};
 use winit::{
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{ElementState, KeyEvent, MouseButton, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
 };
+
+use crate::window::InputEvent;
 
 const WIDTH: f32 = 800.0;
 const HEIGHT: f32 = 600.0;
@@ -16,8 +17,9 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     0.0, 0.0, 0.5, 0.5,
     0.0, 0.0, 0.0, 1.0,
 );
-use crate::uniform::Uniform;
 
+const SAFE_FRAC_PI_2: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
+const SAFE_MIN_RADIUS: f32 = 1.0;
 pub struct Camera2D {
     pub position: Vector3<f32>,
     pub scale: Vector2<f32>,
@@ -79,19 +81,26 @@ pub struct Camera3D {
     fovy: f32,
     znear: f32,
     zfar: f32,
+
+    radius: f32,
+    theta: Rad<f32>,
+    phi: Rad<f32>,
     pub uniform: Uniform<Camera3DUniform>,
 }
 
 impl Camera3D {
     pub fn new(uniform: Uniform<Camera3DUniform>) -> Self {
         Self {
-            eye: (0.0, 1.0, 2.0).into(),
+            eye: (0.0, 0.0, 3.0).into(),
             target: (0.0, 0.0, 0.0).into(),
             up: cgmath::Vector3::unit_y(),
             aspect: WIDTH / HEIGHT as f32,
             fovy: 45.0,
             znear: 0.1,
             zfar: 100.0,
+            theta: cgmath::Deg(-90.0).into(),
+            phi: cgmath::Deg(-20.0).into(),
+            radius: 90.0,
             uniform,
         }
     }
@@ -131,8 +140,13 @@ pub struct CameraController {
     speed: f32,
     is_forward_pressed: bool,
     is_backward_pressed: bool,
-    is_left_pressed: bool,
-    is_right_pressed: bool,
+
+    //mouse
+    is_leftclick_pressed: bool,
+    is_rightclick_pressed: bool,
+    delta_x: f32,
+    delta_y: f32,
+    sensitivity: f32,
 }
 
 impl CameraController {
@@ -141,76 +155,110 @@ impl CameraController {
             speed,
             is_forward_pressed: false,
             is_backward_pressed: false,
-            is_left_pressed: false,
-            is_right_pressed: false,
+            is_leftclick_pressed: false,
+            is_rightclick_pressed: false,
+            delta_x: 0.0,
+            delta_y: 0.0,
+            sensitivity: 0.1,
         }
     }
 
-    pub fn process_events(&mut self, event: &WindowEvent) -> bool {
+    pub fn process_events(&mut self, event: InputEvent) -> bool {
+        use winit::event::DeviceEvent;
         match event {
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        state,
-                        physical_key: PhysicalKey::Code(keycode),
-                        ..
-                    },
-                ..
-            } => {
-                let is_pressed = *state == ElementState::Pressed;
-                match keycode {
-                    KeyCode::KeyW | KeyCode::ArrowUp => {
-                        self.is_forward_pressed = is_pressed;
-                        true
+            InputEvent::Decive(device_event) => match device_event {
+                DeviceEvent::MouseMotion { delta } => {
+                    if self.is_leftclick_pressed || self.is_rightclick_pressed {
+                        self.delta_x = delta.0 as f32;
+                        self.delta_y = delta.1 as f32;
                     }
-                    KeyCode::KeyA | KeyCode::ArrowLeft => {
-                        self.is_left_pressed = is_pressed;
-                        true
-                    }
-                    KeyCode::KeyS | KeyCode::ArrowDown => {
-                        self.is_backward_pressed = is_pressed;
-                        true
-                    }
-                    KeyCode::KeyD | KeyCode::ArrowRight => {
-                        self.is_right_pressed = is_pressed;
-                        true
-                    }
-                    _ => false,
+                    // returns false here because it does validates nothing
+                    false
                 }
-            }
-            _ => false,
+                _ => false,
+            },
+            InputEvent::Window(window_event) => match window_event {
+                WindowEvent::MouseInput { state, button, .. } => {
+                    if *button == MouseButton::Left {
+                        self.is_leftclick_pressed = state.is_pressed();
+                        return true;
+                    } else if *button == MouseButton::Right {
+                        self.is_rightclick_pressed = state.is_pressed();
+                        return true;
+                    }
+
+                    false
+                }
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            state,
+                            physical_key: PhysicalKey::Code(keycode),
+                            ..
+                        },
+                    ..
+                } => {
+                    let is_pressed = *state == ElementState::Pressed;
+                    match keycode {
+                        KeyCode::KeyW | KeyCode::ArrowUp => {
+                            self.is_forward_pressed = is_pressed;
+                            true
+                        }
+                        KeyCode::KeyS | KeyCode::ArrowDown => {
+                            self.is_backward_pressed = is_pressed;
+                            true
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            },
         }
     }
 
-    pub fn update_camera(&self, camera: &mut Camera3D) {
+    pub fn update_camera(&mut self, camera: &mut Camera3D) {
         use cgmath::InnerSpace;
-        let forward = camera.target - camera.eye;
-        let forward_norm = forward.normalize();
-        let forward_mag = forward.magnitude();
+        // calculate azimuth and polar angles
+        if self.is_leftclick_pressed {
+            camera.theta += Rad(self.delta_x * self.sensitivity * self.sensitivity);
 
-        // Prevents glitching when the camera gets too close to the
-        // center of the scene.
-        if self.is_forward_pressed && forward_mag > self.speed {
-            camera.eye += forward_norm * self.speed;
+            camera.phi += Rad(self.delta_y * self.sensitivity * self.sensitivity);
+            if camera.phi < -Rad(SAFE_FRAC_PI_2) {
+                camera.phi = -Rad(SAFE_FRAC_PI_2);
+            } else if camera.phi > Rad(SAFE_FRAC_PI_2) {
+                camera.phi = Rad(SAFE_FRAC_PI_2);
+            }
+        }
+
+        // move the orbit target
+        if self.is_rightclick_pressed {
+            let forward = (camera.target - camera.eye).normalize();
+            let right = forward.cross(camera.up).normalize();
+            camera.target += right * (-self.delta_x * self.sensitivity)
+                + camera.up * (self.delta_y * self.sensitivity);
+        }
+
+        // Set the deltas to 0.0, because if the mouse is not moving but the right or left click buttons are pressed, the camera will be updated anyway.
+        self.delta_x = 0.0;
+        self.delta_y = 0.0;
+
+        // zoom
+        if self.is_forward_pressed {
+            let mut radius = camera.radius - 10.0 * self.sensitivity;
+            if radius < SAFE_MIN_RADIUS {
+                radius = SAFE_MIN_RADIUS;
+            }
+            camera.radius = radius;
         }
         if self.is_backward_pressed {
-            camera.eye -= forward_norm * self.speed;
+            let radius = camera.radius + 10.0 * self.sensitivity;
+            camera.radius = radius;
         }
 
-        let right = forward_norm.cross(camera.up);
-
-        // Redo radius calc in case the forward/backward is pressed.
-        let forward = camera.target - camera.eye;
-        let forward_mag = forward.magnitude();
-
-        if self.is_right_pressed {
-            // Rescale the distance between the target and the eye so
-            // that it doesn't change. The eye, therefore, still
-            // lies on the circle made by the target and eye.
-            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
-        }
-        if self.is_left_pressed {
-            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
-        }
+        camera.eye.x =
+            camera.target.x + camera.radius * (camera.phi.0.cos() * camera.theta.0.cos());
+        camera.eye.y = camera.target.y + camera.radius * camera.phi.0.sin();
+        camera.eye.z =
+            camera.target.z + camera.radius * (camera.phi.0.cos() * camera.theta.0.sin());
     }
 }

@@ -4,6 +4,7 @@ mod quad;
 mod system;
 mod uniform;
 mod window;
+mod window_proxy;
 
 use gpu::GpuState;
 use window::App;

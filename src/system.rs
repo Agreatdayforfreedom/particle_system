@@ -1,20 +1,21 @@
 use core::f32;
 
+use crate::window::InputEvent;
 use crate::{
     camera::{Camera2D, Camera2DUniform, Camera3D, Camera3DUniform, CameraController},
     quad::{Quad, VERTICES},
     uniform::Uniform,
 };
+
 use cgmath::{InnerSpace, Vector3};
 use rand::Rng;
 use wgpu::util::DeviceExt;
-use winit::event::WindowEvent;
 
 #[cfg(target_arch = "wasm32")]
 const PARTICLE_POOLING: u64 = 100_000;
 
 #[cfg(not(target_arch = "wasm32"))]
-const PARTICLE_POOLING: u64 = 100_000;
+const PARTICLE_POOLING: u64 = 1_000_000;
 
 fn dv() -> Vector3<f32> {
     let mut rng = rand::thread_rng();
@@ -35,14 +36,14 @@ fn generate_particles() -> Vec<f32> {
     for chunk in particles.chunks_mut(8) {
         let mut rng = rand::thread_rng();
         // pos
-        chunk[0] = rng.gen_range(-10.0..10.0);
-        chunk[1] = rng.gen_range(-10.0..10.0);
-        chunk[2] = rng.gen_range(-10.0..10.0);
+        chunk[0] = 0.1;
+        chunk[1] = 0.1;
+        chunk[2] = 0.1;
         chunk[3] = 0.0;
         //dir
-        chunk[4] = rng.gen_range(-1.0..0.1);
-        chunk[5] = rng.gen_range(-1.0..0.1);
-        chunk[6] = rng.gen_range(-1.0..1.0);
+        chunk[4] = rng.gen_range(0.01..0.05);
+        chunk[5] = rng.gen_range(0.01..0.05);
+        chunk[6] = rng.gen_range(0.01..0.05);
         //velocity
         chunk[7] = rng.gen_range(-0.1..0.1);
 
@@ -194,19 +195,19 @@ impl System {
         }
     }
 
-    pub fn input(&mut self, event: &WindowEvent) -> bool {
+    pub fn input(&mut self, event: InputEvent) -> bool {
         self.camera_controller.process_events(event)
     }
+
     pub fn update(&mut self, queue: &wgpu::Queue, dt: instant::Duration) {
         self.time += dt.as_secs_f64();
         self.camera_controller.update_camera(&mut self.camera);
         self.camera.build_view_projection_matrix();
         self.camera.update((0.0, 0.0, 0.0).into());
-
         for (i, attractor) in self.attractors.iter_mut().enumerate() {
             *attractor = [
-                (self.time as f32 * (i as f32 + 4.0) * 7.5 * 20.0).sin() * 50.0,
-                (self.time as f32 * (i as f32 + 7.0) * 3.9 * 20.0).cos() * 50.0,
+                (self.time as f32 * (i as f32 + 4.0) * 7.5 * 20.0).sin(),
+                (self.time as f32 * (i as f32 + 7.0) * 3.9 * 20.0).cos(),
                 (self.time as f32 * (i as f32 + 3.0) * 5.3 * 20.0).sin()
                     * (self.time as f32 * (i as f32 + 5.0) * 9.1).cos()
                     * 100.0,
