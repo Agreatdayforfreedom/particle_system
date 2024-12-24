@@ -12,7 +12,7 @@ use rand::Rng;
 use wgpu::util::DeviceExt;
 
 #[cfg(target_arch = "wasm32")]
-const PARTICLE_POOLING: u64 = 100_000;
+const PARTICLE_POOLING: u64 = 250_000;
 
 #[cfg(not(target_arch = "wasm32"))]
 const PARTICLE_POOLING: u64 = 1_000_000;
