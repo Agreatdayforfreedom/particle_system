@@ -276,7 +276,6 @@ impl System {
 
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             rpass.set_vertex_buffer(1, self.particle_buffer.slice(..));
-
             rpass.draw(0..6, 0..PARTICLE_POOLING as u32);
         }
 

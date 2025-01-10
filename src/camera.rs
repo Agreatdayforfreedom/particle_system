@@ -1,4 +1,3 @@
-// this is a 2d camera
 use crate::uniform::Uniform;
 use cgmath::{Matrix4, Rad, Vector2, Vector3};
 use winit::{

@@ -1,4 +1,5 @@
 use winit::{
+    dpi::{LogicalSize, PhysicalSize},
     event_loop::{ActiveEventLoop, EventLoopProxy},
     window::{Fullscreen, Window},
 };
