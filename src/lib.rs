@@ -1,4 +1,5 @@
 mod camera;
+mod egui;
 mod gpu;
 mod quad;
 mod system;

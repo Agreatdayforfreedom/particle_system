@@ -84,7 +84,7 @@ impl ApplicationHandler<GpuState> for App {
                     self.time = now;
                     state.window().request_redraw();
                     state.update(dt);
-                    state.render();
+                    state.render(dt);
                 }
 
                 _ => (),

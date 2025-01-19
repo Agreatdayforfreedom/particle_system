@@ -236,17 +236,7 @@ impl System {
         self.camera.uniform.write(queue);
     }
 
-    pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, surface: &wgpu::Surface) {
-        let frame = surface
-            .get_current_texture()
-            .expect("Failed to acquire next swap chain texture");
-
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        let context_view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
+    pub fn render(&mut self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         {
             let mut rpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: None,
@@ -260,7 +250,7 @@ impl System {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &context_view,
+                    view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
@@ -278,10 +268,6 @@ impl System {
             rpass.set_vertex_buffer(1, self.particle_buffer.slice(..));
             rpass.draw(0..6, 0..PARTICLE_POOLING as u32);
         }
-
-        queue.submit(Some(encoder.finish()));
-
-        frame.present();
     }
 }
 
