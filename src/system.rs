@@ -10,12 +10,17 @@ use crate::{
 use cgmath::{InnerSpace, Vector3};
 use rand::Rng;
 use wgpu::util::DeviceExt;
+use wgpu::QuerySet;
 
 #[cfg(target_arch = "wasm32")]
 const PARTICLE_POOLING: u64 = 250_000;
 
 #[cfg(not(target_arch = "wasm32"))]
 const PARTICLE_POOLING: u64 = 1_000_000;
+
+//*  4_194_240 / 64 = 65535 MAX (x) DISPATCHES
+// #[cfg(not(target_arch = "wasm32"))]
+// const PARTICLE_POOLING: u64 = 4_194_241;
 
 fn dv() -> Vector3<f32> {
     let mut rng = rand::thread_rng();
@@ -236,11 +241,21 @@ impl System {
         self.camera.uniform.write(queue);
     }
 
-    pub fn render(&mut self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+    pub fn render(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        query_render_timing: &QuerySet,
+        query_update_timing: &QuerySet,
+    ) {
         {
             let mut rpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: None,
-                timestamp_writes: None,
+                timestamp_writes: Some(wgpu::ComputePassTimestampWrites {
+                    query_set: query_update_timing,
+                    beginning_of_pass_write_index: Some(0),
+                    end_of_pass_write_index: Some(1),
+                }),
             });
             rpass.set_pipeline(&self.compute_pipeline);
             rpass.set_bind_group(0, &self.bind_group, &[]);
@@ -258,12 +273,15 @@ impl System {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
+                    query_set: query_render_timing,
+                    beginning_of_pass_write_index: Some(0),
+                    end_of_pass_write_index: Some(1),
+                }),
                 occlusion_query_set: None,
             });
             rpass.set_pipeline(&self.pipeline);
             rpass.set_bind_group(0, &self.camera.uniform.bind_group, &[]);
-
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             rpass.set_vertex_buffer(1, self.particle_buffer.slice(..));
             rpass.draw(0..6, 0..PARTICLE_POOLING as u32);

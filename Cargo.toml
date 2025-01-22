@@ -19,6 +19,7 @@ log = "0.4.22"
 egui = "0.30.0"
 egui-wgpu = "0.30.0"
 egui-winit = "0.30.0"
+flume = "0.11.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }

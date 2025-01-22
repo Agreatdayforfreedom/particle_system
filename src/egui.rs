@@ -1,4 +1,4 @@
-use egui::Context;
+use egui::{Color32, Context, Style, Visuals};
 use egui_wgpu::wgpu::{CommandEncoder, Device, Queue, StoreOp, TextureFormat, TextureView};
 use egui_wgpu::{wgpu, Renderer, ScreenDescriptor};
 use egui_winit::State;
@@ -25,6 +25,18 @@ impl EguiRenderer {
     ) -> EguiRenderer {
         let egui_context = Context::default();
 
+        let visuals = Visuals {
+            window_fill: egui::Color32::TRANSPARENT,
+            panel_fill: egui::Color32::TRANSPARENT,
+            window_stroke: egui::Stroke {
+                width: 0.0,
+                color: Color32::TRANSPARENT,
+            },
+            override_text_color: Some(egui::Color32::WHITE),
+            ..Default::default()
+        };
+
+        egui_context.set_visuals(visuals);
         let egui_state = egui_winit::State::new(
             egui_context,
             egui::viewport::ViewportId::ROOT,
