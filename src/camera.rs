@@ -178,15 +178,12 @@ impl CameraController {
             },
             InputEvent::Window(window_event) => match window_event {
                 WindowEvent::MouseInput { state, button, .. } => {
-                    if *button == MouseButton::Left {
-                        self.is_leftclick_pressed = state.is_pressed();
-                        return true;
-                    } else if *button == MouseButton::Right {
-                        self.is_rightclick_pressed = state.is_pressed();
-                        return true;
+                    match button {
+                        MouseButton::Left => self.is_leftclick_pressed = state.is_pressed(),
+                        MouseButton::Right => self.is_rightclick_pressed = state.is_pressed(),
+                        _ => {}
                     }
-
-                    false
+                    return true;
                 }
                 WindowEvent::KeyboardInput {
                     event:

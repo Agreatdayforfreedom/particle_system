@@ -182,12 +182,13 @@ impl GpuState {
         self.window.as_ref()
     }
 
-    pub fn input(&mut self, event: InputEvent) -> bool {
+    pub fn input(&mut self, event: InputEvent) {
         if let InputEvent::Window(event) = event {
-            self.egui.handle_input(self.window.as_ref(), event);
+            if self.egui.handle_input(self.window.as_ref(), event) {
+                return;
+            }
         }
-        // false
-        self.system.input(event)
+        self.system.input(event);
     }
     pub fn update(&mut self, dt: instant::Duration) {
         self.system.update(&self.queue, dt);

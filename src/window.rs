@@ -68,26 +68,26 @@ impl ApplicationHandler<GpuState> for App {
             return;
         };
 
-        if !state.input(InputEvent::Window(&event)) {
-            match event {
-                WindowEvent::CloseRequested => {
-                    println!("The close button was pressed; stopping");
-                    event_loop.exit();
-                }
-                WindowEvent::Resized(new_size) => {
-                    log::info!("Resizing: {:?}", new_size);
-                    state.resize(new_size);
-                }
-                WindowEvent::RedrawRequested => {
-                    let now = instant::Instant::now();
-                    let dt = now - self.time;
-                    self.time = now;
-                    state.window().request_redraw();
-                    state.update(dt);
-                    state.render(dt);
-                }
+        match event {
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping");
+                event_loop.exit();
+            }
+            WindowEvent::Resized(new_size) => {
+                log::info!("Resizing: {:?}", new_size);
+                state.resize(new_size);
+            }
+            WindowEvent::RedrawRequested => {
+                let now = instant::Instant::now();
+                let dt = now - self.time;
+                self.time = now;
+                state.window().request_redraw();
+                state.update(dt);
+                state.render(dt);
+            }
 
-                _ => (),
+            _ => {
+                state.input(InputEvent::Window(&event));
             }
         }
     }
