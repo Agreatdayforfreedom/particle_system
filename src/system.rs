@@ -1,5 +1,7 @@
 use core::f32;
+use std::borrow::Cow;
 
+use crate::props::ShaderBuilder;
 use crate::window::InputEvent;
 use crate::{
     camera::{Camera2D, Camera2DUniform, Camera3D, Camera3DUniform, CameraController},
@@ -8,6 +10,7 @@ use crate::{
 };
 
 use cgmath::{InnerSpace, Vector3};
+use naga_oil::compose::{ComposableModuleDescriptor, Composer, NagaModuleDescriptor};
 use rand::Rng;
 use wgpu::util::DeviceExt;
 use wgpu::QuerySet;
@@ -84,9 +87,48 @@ impl System {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
         let mut camera = Camera3D::new(Uniform::<Camera3DUniform>::new(&device));
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("./shaders/vfx_render.wgsl"));
-        let compute_shader =
-            device.create_shader_module(wgpu::include_wgsl!("./shaders/vfx_compute.wgsl"));
+        let module = ShaderBuilder::build_module(&include_str!("shaders/vfx_render.wgsl"));
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            source: wgpu::ShaderSource::Naga(Cow::Owned(module)),
+            label: Some("vfx_render.wgsl"),
+        });
+
+        let module =
+            ShaderBuilder::build_module(&include_str!("shaders/vfx_compute.wgsl").replace(
+                ";;COMPUTE_CODE",
+                "var a = 20.0;			
+        var b = 16.0 / 3.0;
+        var c = 38.0;
+
+        let distance = sqrt(
+            particle.position.x * particle.position.x + 
+            particle.position.y * particle.position.y + 
+            particle.position.z * particle.position.z
+        );
+
+        let max_distance = sqrt(
+            100.0*100.0+
+            100.0*100.0+
+            100.0*100.0
+        );
+    
+        let float = clamp(0.0, 1.0, f32(distance / max_distance));
+
+        let dx = a * (particle.position.y - particle.position.x);
+        let dy = particle.position.x * (c - particle.position.z) - particle.position.y;
+        let dz = particle.position.x * particle.position.y - b * particle.position.z;
+
+        particle.position.x +=  dx * particle.dir.x * uniforms.delta_time;
+        particle.position.y +=  dy * particle.dir.y * uniforms.delta_time;
+        particle.position.z +=  dz * particle.dir.z * uniforms.delta_time;
+        particle.position.w =  float;
+",
+            ));
+        let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            source: wgpu::ShaderSource::Naga(Cow::Owned(module)),
+            label: Some("vfx_compute.wgsl"),
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Main_pipeline_layout"),
             bind_group_layouts: &[&camera.uniform.bind_group_layout],

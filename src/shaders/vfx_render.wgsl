@@ -39,7 +39,6 @@ fn vs_main(in: In) -> Out {
 
 @fragment
 fn fs_main(in: Out) -> @location(0) vec4f {
-
     return mix(vec4(0.0, 0.2, 0.8, 1.0),
         vec4(0.17, 0.1, 0.2, 1.0),
         smoothstep(0.0, 0.5, in.intensity)

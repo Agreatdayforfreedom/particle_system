@@ -11,7 +11,7 @@ bytemuck = {version = "1.19.0", features = ["derive"]}
 cgmath = "0.18.0"
 pollster = "0.4.0"
 rand = "0.8.5"
-wgpu = {version = "23.0.0"}
+wgpu = {version = "23.0.0", features = ["naga-ir"]}
 winit = "0.30.5"
 cfg-if = "1"
 instant = "0.1"
@@ -20,6 +20,7 @@ egui = "0.30.0"
 egui-wgpu = "0.30.0"
 egui-winit = "0.30.0"
 flume = "0.11.1"
+naga_oil = "0.16.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
