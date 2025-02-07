@@ -25,7 +25,6 @@ struct SimulationParams {
 
 struct Uniforms {
   delta_time: f32,
-  attractors: mat4x4f
 }
 
 struct Particle {
@@ -38,6 +37,7 @@ struct Particle {
 @binding(0) @group(0) var<storage, read_write> particles_dst : array<Particle>;
 @binding(1) @group(0) var<storage> sim_params_groups: SimulationParams;
 @binding(2) @group(0) var<uniform> uniforms: Uniforms;
+@binding(0) @group(1) var<uniform> particle_uniform: ParticleUniform;
 
 @compute @workgroup_size(64)
 fn simulate(@builtin(global_invocation_id) global_invocation_id : vec3u) {

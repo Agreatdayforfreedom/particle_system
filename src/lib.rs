@@ -1,7 +1,7 @@
+mod attr;
 mod camera;
 mod egui;
 mod gpu;
-mod props;
 mod quad;
 mod system;
 mod uniform;

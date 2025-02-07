@@ -1,7 +1,8 @@
 use core::f32;
 use std::borrow::Cow;
 
-use crate::props::ShaderBuilder;
+use crate::attr::{AttrContext, ShaderBuilder};
+use crate::uniform;
 use crate::window::InputEvent;
 use crate::{
     camera::{Camera2D, Camera2DUniform, Camera3D, Camera3DUniform, CameraController},
@@ -71,10 +72,8 @@ pub struct System {
     simulation_buffer: wgpu::Buffer,
     particle_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
-
+    pub particle_uniform: uniform::Uniform<AttrContext>,
     /**test */
-    attractors: [[f32; 4]; 4],
-    // camera_pos_uniform: Uniform<CameraPosition>,
     /// contains all the data to compute the paricles. \
     /// holds the *particles buffer* at **@binding(0)** \
     /// holds the *simulation params buffer* at **@binding(1)** \
@@ -114,10 +113,12 @@ impl System {
     
         let float = clamp(0.0, 1.0, f32(distance / max_distance));
 
-        let dx = a * (particle.position.y - particle.position.x);
-        let dy = particle.position.x * (c - particle.position.z) - particle.position.y;
-        let dz = particle.position.x * particle.position.y - b * particle.position.z;
-
+        var dx = a * (particle.position.y - particle.position.x);
+        var dy = particle.position.x * (c - particle.position.z) - particle.position.y;
+        var dz = particle.position.x * particle.position.y - b * particle.position.z;
+        dx *= particle_uniform.velocity;
+        dy *= particle_uniform.velocity;
+        dz *= particle_uniform.velocity;
         particle.position.x +=  dx * particle.dir.x * uniforms.delta_time;
         particle.position.y +=  dy * particle.dir.y * uniforms.delta_time;
         particle.position.z +=  dz * particle.dir.z * uniforms.delta_time;
@@ -167,22 +168,7 @@ impl System {
         });
         // for testing (pos.xyz, mass)
 
-        let attractors = [
-            [0.0, 0.0, 0.0, rand::thread_rng().gen_range(0.5..1.0)],
-            [0.0, 0.0, 0.0, rand::thread_rng().gen_range(0.5..1.0)],
-            [0.0, 0.0, 0.0, rand::thread_rng().gen_range(0.5..1.0)],
-            [0.0, 0.0, 0.0, rand::thread_rng().gen_range(0.5..1.0)],
-        ];
-        let flatten: Vec<f32> = attractors
-            .iter()
-            .flat_map(|row| row.iter().copied())
-            .collect();
         let mut uniform_bytes: Vec<f32> = vec![0.0];
-        uniform_bytes.extend(flatten);
-        uniform_bytes.push(0.0);
-        uniform_bytes.push(0.0);
-        uniform_bytes.push(0.0);
-        //padding
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Compute Buffer"),
@@ -210,13 +196,16 @@ impl System {
         });
 
         let pipeline = create_render_pipeline(device, &shader, config.format, &pipeline_layout);
+        let particle_uniform = Uniform::<AttrContext>::new(&device);
         let compute_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Compute Pipeline Layout"),
-                bind_group_layouts: &[&create_compute_bind_group_layout(device)],
+                bind_group_layouts: &[
+                    &create_compute_bind_group_layout(device),
+                    &particle_uniform.bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
-
         let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("Particles compute pipeline"),
             layout: Some(&compute_pipeline_layout),
@@ -233,8 +222,8 @@ impl System {
             particle_buffer,
             simulation_buffer,
             uniform_buffer,
+            particle_uniform,
             // camera_pos_uniform: Uniform::<f32>::new(&device),
-            attractors,
             vertex_buffer,
             pipeline,
             compute_pipeline,
@@ -251,34 +240,15 @@ impl System {
         self.camera_controller.update_camera(&mut self.camera);
         self.camera.build_view_projection_matrix();
         self.camera.update((0.0, 0.0, 0.0).into());
-        for (i, attractor) in self.attractors.iter_mut().enumerate() {
-            *attractor = [
-                (self.time as f32 * (i as f32 + 4.0) * 7.5 * 20.0).sin(),
-                (self.time as f32 * (i as f32 + 7.0) * 3.9 * 20.0).cos(),
-                (self.time as f32 * (i as f32 + 3.0) * 5.3 * 20.0).sin()
-                    * (self.time as f32 * (i as f32 + 5.0) * 9.1).cos()
-                    * 100.0,
-                attractor[3],
-            ]
-            .into();
-        }
 
-        let flatten: Vec<f32> = self
-            .attractors
-            .iter()
-            .flat_map(|row| row.iter().copied())
-            .collect();
-        let mut uniform_bytes: Vec<f32> = vec![dt.as_secs_f32()];
-        uniform_bytes.extend(flatten);
-        uniform_bytes.push(0.0);
-        uniform_bytes.push(0.0);
-        uniform_bytes.push(0.0);
+        let uniform_bytes: Vec<f32> = vec![dt.as_secs_f32()];
 
         queue.write_buffer(
             &self.uniform_buffer,
             0,
             bytemuck::cast_slice(&uniform_bytes),
         );
+        self.particle_uniform.write(queue);
 
         self.camera.uniform.write(queue);
     }
@@ -291,7 +261,7 @@ impl System {
         query_update_timing: &QuerySet,
     ) {
         {
-            let mut rpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: None,
                 timestamp_writes: Some(wgpu::ComputePassTimestampWrites {
                     query_set: query_update_timing,
@@ -299,9 +269,10 @@ impl System {
                     end_of_pass_write_index: Some(1),
                 }),
             });
-            rpass.set_pipeline(&self.compute_pipeline);
-            rpass.set_bind_group(0, &self.bind_group, &[]);
-            rpass.dispatch_workgroups((PARTICLE_POOLING as f32 / 64.0).ceil() as u32, 1, 1);
+            cpass.set_pipeline(&self.compute_pipeline);
+            cpass.set_bind_group(0, &self.bind_group, &[]);
+            cpass.set_bind_group(1, &self.particle_uniform.bind_group, &[]);
+            cpass.dispatch_workgroups((PARTICLE_POOLING as f32 / 64.0).ceil() as u32, 1, 1);
         }
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

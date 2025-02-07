@@ -270,6 +270,11 @@ impl GpuState {
                     ui.label(format!("FPS: {}", (1.0 / dt.as_secs_f64())));
                     ui.label(format!("Render time: {}µs", self.gpu_render_time));
                     ui.label(format!("Update time: {}µs", self.gpu_update_time));
+
+                    let _ = ui.add(egui::Slider::new(
+                        &mut self.system.particle_uniform.data.velocity.vel,
+                        0.0..=100.0,
+                    ));
                 });
 
             let screen_descriptor = ScreenDescriptor {
