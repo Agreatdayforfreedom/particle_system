@@ -273,7 +273,7 @@ impl GpuState {
 
                     let _ = ui.add(egui::Slider::new(
                         &mut self.system.particle_uniform.data.velocity.vel,
-                        0.0..=100.0,
+                        -100.0..=100.0,
                     ));
                 });
 

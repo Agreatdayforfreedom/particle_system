@@ -2,13 +2,15 @@ use core::f32;
 use std::borrow::Cow;
 
 use crate::attr::{AttrContext, ShaderBuilder};
-use crate::uniform;
+use crate::postproc::Bloom;
+use crate::texture::{create_bind_group_texture_layout, Texture};
 use crate::window::InputEvent;
 use crate::{
     camera::{Camera2D, Camera2DUniform, Camera3D, Camera3DUniform, CameraController},
     quad::{Quad, VERTICES},
     uniform::Uniform,
 };
+use crate::{texture, uniform};
 
 use cgmath::{InnerSpace, Vector3};
 use naga_oil::compose::{ComposableModuleDescriptor, Composer, NagaModuleDescriptor};
@@ -55,17 +57,17 @@ fn generate_particles() -> Vec<f32> {
         chunk[6] = rng.gen_range(0.01..0.05);
         //velocity
         chunk[7] = rng.gen_range(-0.1..0.1);
-
-        //lifetime
-        // chunk[8] = 0.0;
     }
     particles
 }
 
 pub struct System {
+    view: texture::Texture,
+
     camera: Camera3D,
     camera_controller: CameraController,
     pipeline: wgpu::RenderPipeline,
+    blend_pipeline: wgpu::RenderPipeline,
     compute_pipeline: wgpu::ComputePipeline,
 
     vertex_buffer: wgpu::Buffer,
@@ -79,6 +81,7 @@ pub struct System {
     /// holds the *simulation params buffer* at **@binding(1)** \
     /// holds the *delta time buffer* at **@binding(2)**
     bind_group: wgpu::BindGroup,
+    bloom: Bloom,
     time: f64,
 }
 
@@ -95,36 +98,78 @@ impl System {
         let module =
             ShaderBuilder::build_module(&include_str!("shaders/vfx_compute.wgsl").replace(
                 ";;COMPUTE_CODE",
-                "var a = 20.0;			
-        var b = 16.0 / 3.0;
-        var c = 38.0;
+                /*"var a = 20.0;
+                    var b = 16.0 / 3.0;
+                    var c = 38.0;
 
-        let distance = sqrt(
-            particle.position.x * particle.position.x + 
-            particle.position.y * particle.position.y + 
-            particle.position.z * particle.position.z
-        );
+                    let distance = sqrt(
+                        particle.position.x * particle.position.x +
+                        particle.position.y * particle.position.y +
+                        particle.position.z * particle.position.z
+                    );
 
-        let max_distance = sqrt(
-            100.0*100.0+
-            100.0*100.0+
-            100.0*100.0
-        );
-    
-        let float = clamp(0.0, 1.0, f32(distance / max_distance));
+                    let max_distance = sqrt(
+                        100.0*100.0+
+                        100.0*100.0+
+                        100.0*100.0
+                    );
 
-        var dx = a * (particle.position.y - particle.position.x);
-        var dy = particle.position.x * (c - particle.position.z) - particle.position.y;
-        var dz = particle.position.x * particle.position.y - b * particle.position.z;
-        dx *= particle_uniform.velocity;
-        dy *= particle_uniform.velocity;
-        dz *= particle_uniform.velocity;
-        particle.position.x +=  dx * particle.dir.x * uniforms.delta_time;
-        particle.position.y +=  dy * particle.dir.y * uniforms.delta_time;
-        particle.position.z +=  dz * particle.dir.z * uniforms.delta_time;
-        particle.position.w =  float;
-",
+
+                    var dx = a * (particle.position.y - particle.position.x);
+                    var dy = particle.position.x * (c - particle.position.z) - particle.position.y;
+                    var dz = particle.position.x * particle.position.y - b * particle.position.z;
+                    dx *= particle_uniform.velocity;
+                    dy *= particle_uniform.velocity;
+                    dz *= particle_uniform.velocity;
+                    let float = clamp(0.0, 1.0, f32(distance / max_distance));
+
+                    // if(particle.position.w < 0.0) {
+
+                    // particle.position.x = 0.0;
+                    // particle.position.y = 0.0;
+                    // particle.position.z = 0.0;
+                    // particle.position.w =   10.0;
+                    // }
+                    // particle.dir.x += particle_uniform.velocity * 0.1 * (gen_range(-1.0, 1.0) * 0.1);
+                    // particle.dir.y += particle_uniform.velocity  * 0.1  * (gen_range(-1.0, 1.0)  * 0.1);
+                    // particle.dir.z += particle_uniform.velocity * 0.1  * (gen_range(-1.0, 1.0)  * 0.1);
+                    particle.position.x += dx * particle.dir.x * uniforms.delta_time;
+                    particle.position.y += dy * particle.dir.y * uniforms.delta_time;
+                    particle.position.z += dz * particle.dir.z * uniforms.delta_time;
+                    particle.position.w = float;
+
+                ",*/
+                "
+
+                    var a = 20.0;
+                 var b = 16.0 / 3.0;
+                 var c = 38.0;
+
+                 let distance = sqrt(
+                   particle.position.x * particle.position.x +
+                   particle.position.y * particle.position.y +
+                   particle.position.z * particle.position.z
+                   );
+                     let max_distance = sqrt(
+                       100.0*100.0+
+                       100.0*100.0+
+                       100.0*100.0
+                     );
+
+                let float = clamp(0.0, 1.0, f32(distance / max_distance));
+
+                 let dx = a * (particle.position.y - particle.position.x);
+                 let dy = particle.position.x * (c - particle.position.z) - particle.position.y;
+                 let dz = particle.position.x * particle.position.y - b * particle.position.z;
+
+                 particle.position.x +=  dx * particle.dir.x * uniforms.delta_time;
+                 particle.position.y +=  dy * particle.dir.y * uniforms.delta_time;
+                 particle.position.z +=  dz * particle.dir.z * uniforms.delta_time;
+                 particle.position.w =  float;
+                             
+                ",
             ));
+
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             source: wgpu::ShaderSource::Naga(Cow::Owned(module)),
             label: Some("vfx_compute.wgsl"),
@@ -150,6 +195,7 @@ impl System {
                 | wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST,
         });
+
         // let particle_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         //     label: Some(&format!("Particle Buffer")),
         //     size: 8 * 4 * PARTICLE_POOLING,
@@ -215,7 +261,51 @@ impl System {
             cache: None,
         });
 
+        let bloom = Bloom::new(device, config.format, (config.width, config.height));
+
+        let bind_group_texture_layout = create_bind_group_texture_layout(device);
+
+        let blend_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[&bind_group_texture_layout, &bind_group_texture_layout],
+                push_constant_ranges: &[],
+            });
+        let shader_blend = device.create_shader_module(wgpu::include_wgsl!("./shaders/blend.wgsl"));
+        let shader_fullscreen_quad = device
+            .create_shader_module(wgpu::include_wgsl!("./shaders/fullscreen_quad_vertex.wgsl"));
+        let blend_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Final pipeline"),
+            layout: Some(&blend_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader_fullscreen_quad,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader_blend,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::all(),
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
         Self {
+            view: Texture::empty(
+                device,
+                (config.width, config.height),
+                Some("System texture view"),
+            )
+            .expect("Failed to build texture"),
             camera,
             camera_controller: CameraController::new(2.0),
             bind_group,
@@ -223,10 +313,12 @@ impl System {
             simulation_buffer,
             uniform_buffer,
             particle_uniform,
+            bloom,
             // camera_pos_uniform: Uniform::<f32>::new(&device),
             vertex_buffer,
             pipeline,
             compute_pipeline,
+            blend_pipeline,
             time: 0.0,
         }
     }
@@ -256,7 +348,7 @@ impl System {
     pub fn render(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
+        ctx_view: &wgpu::TextureView,
         query_render_timing: &QuerySet,
         query_update_timing: &QuerySet,
     ) {
@@ -278,7 +370,7 @@ impl System {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
+                    view: &self.view.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
@@ -299,6 +391,37 @@ impl System {
             rpass.set_vertex_buffer(1, self.particle_buffer.slice(..));
             rpass.draw(0..6, 0..PARTICLE_POOLING as u32);
         }
+        self.bloom.render(encoder, &self.view);
+        self.blend(encoder, &self.view, &ctx_view, &self.blend_pipeline);
+    }
+
+    pub(self) fn blend(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        extra_texture: &Texture,
+        target_texture: &wgpu::TextureView,
+        pipeline: &wgpu::RenderPipeline,
+    ) {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target_texture,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+
+        rpass.set_pipeline(pipeline);
+
+        rpass.set_bind_group(0, &extra_texture.bind_group, &[]);
+        rpass.set_bind_group(1, &self.bloom.get_final_texture().bind_group, &[]);
+        rpass.draw(0..6, 0..1);
     }
 }
 

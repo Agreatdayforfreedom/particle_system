@@ -16,6 +16,8 @@ struct In {
 struct Out {
     @builtin(position) clip_position: vec4<f32>,
     @location(1) intensity: f32,
+    @location(2) vertex_position: vec2f,
+
 }
 
 @vertex
@@ -34,13 +36,21 @@ fn vs_main(in: In) -> Out {
 
     out.clip_position = proj_view * vec4<f32>(worldPosition, 1.0);
     out.intensity = in.position.w;
+    out.vertex_position = in.vertex_position;
     return out;
 }
 
 @fragment
 fn fs_main(in: Out) -> @location(0) vec4f {
-    return mix(vec4(0.0, 0.2, 0.8, 1.0),
+   let dist = length(in.vertex_position); 
+    let alpha = smoothstep(0.5, 0.1, dist);
+
+    var color = mix(
+        vec4(0.0, 0.2, 0.8, 1.0),
         vec4(0.17, 0.1, 0.2, 1.0),
         smoothstep(0.0, 0.5, in.intensity)
-        );
+    );
+
+    color.a *= alpha;
+    return color;
 }

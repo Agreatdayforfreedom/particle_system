@@ -27,6 +27,11 @@ struct Uniforms {
   delta_time: f32,
 }
 
+
+struct ParticleUniform { // this "represents" an emitter and should be moved.
+  position: vec4f,
+  velocity: f32,
+}
 struct Particle {
   position: vec4f,
   dir: vec3f,
