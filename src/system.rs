@@ -1,5 +1,6 @@
 use core::f32;
 use std::borrow::Cow;
+use std::path::Path;
 
 use crate::attr::{AttrContext, ShaderBuilder};
 use crate::postproc::Bloom;
@@ -21,8 +22,8 @@ use wgpu::QuerySet;
 #[cfg(target_arch = "wasm32")]
 const PARTICLE_POOLING: u64 = 250_000;
 
-#[cfg(not(target_arch = "wasm32"))]
-const PARTICLE_POOLING: u64 = 1_000_000;
+// #[cfg(not(target_arch = "wasm32"))]
+// const PARTICLE_POOLING: u64 = 1_000_000;
 
 //*  4_194_240 / 64 = 65535 MAX (x) DISPATCHES
 // #[cfg(not(target_arch = "wasm32"))]
@@ -41,23 +42,65 @@ fn dv() -> Vector3<f32> {
     cgmath::Vector3::new(x, y, z).normalize()
 }
 
-fn generate_particles() -> Vec<f32> {
-    let mut particles = vec![0.0f32; 8 * PARTICLE_POOLING as usize];
+use image::{GenericImageView, RgbaImage};
 
-    for chunk in particles.chunks_mut(8) {
+const PARTICLE_POOLING: usize = 1000 * 937;
+
+fn generate_particles() -> Vec<f32> {
+    let img = include_bytes!("./hemis.jpg");
+    let img = image::load_from_memory(img)
+        .expect("Failed to load image")
+        .to_rgba8();
+
+    let d = img.dimensions();
+    let pp = d.0 * d.1;
+    println!("{:?} {:?}", pp, d);
+    let mut particles = vec![0.0f32; 16 * pp as usize];
+
+    for (i, chunk) in particles.chunks_mut(16).enumerate() {
         let mut rng = rand::thread_rng();
-        // pos
-        chunk[0] = 0.1;
-        chunk[1] = 0.1;
-        chunk[2] = 0.1;
+
+        // Compute texture coordinates
+        let px = i % d.0 as usize;
+        let py = i / d.0 as usize;
+        // Sample color from image
+
+        let pixel = img.get_pixel(px as u32, py as u32);
+        let r = pixel[0] as f32 / 255.0;
+        let g = pixel[1] as f32 / 255.0;
+        let b = pixel[2] as f32 / 255.0;
+        let a = pixel[3] as f32 / 255.0;
+
+        // Map to world space (-1 to 1)
+        let world_x = (px as f32 / d.0 as f32) * 2.0 - 1.0;
+        let world_y = (py as f32 / d.1 as f32) * 2.0 - 1.0;
+
+        // Position
+        chunk[0] = -world_x * 30.0;
+        chunk[1] = -world_y * 30.0;
+        chunk[2] = 0.0;
         chunk[3] = 0.0;
-        //dir
-        chunk[4] = rng.gen_range(0.01..0.05);
-        chunk[5] = rng.gen_range(0.01..0.05);
-        chunk[6] = rng.gen_range(0.01..0.05);
-        //velocity
-        chunk[7] = rng.gen_range(-0.1..0.1);
+
+        // Color
+        chunk[4] = r;
+        chunk[5] = g;
+        chunk[6] = b;
+        chunk[7] = a;
+
+        // Direction
+        chunk[8] = rng.gen_range(0.0..0.1);
+        chunk[9] = rng.gen_range(0.0..0.1);
+        chunk[10] = rng.gen_range(0.0..0.1);
+
+        // Velocity
+        chunk[11] = rng.gen_range(-0.1..0.1);
+
+        // Origin
+        chunk[12] = -world_x * 30.0;
+        chunk[13] = -world_y * 30.0;
+        chunk[14] = 0.0;
     }
+
     particles
 }
 
@@ -98,75 +141,24 @@ impl System {
         let module =
             ShaderBuilder::build_module(&include_str!("shaders/vfx_compute.wgsl").replace(
                 ";;COMPUTE_CODE",
-                /*"var a = 20.0;
-                    var b = 16.0 / 3.0;
-                    var c = 38.0;
-
-                    let distance = sqrt(
-                        particle.position.x * particle.position.x +
-                        particle.position.y * particle.position.y +
-                        particle.position.z * particle.position.z
-                    );
-
-                    let max_distance = sqrt(
-                        100.0*100.0+
-                        100.0*100.0+
-                        100.0*100.0
-                    );
-
-
-                    var dx = a * (particle.position.y - particle.position.x);
-                    var dy = particle.position.x * (c - particle.position.z) - particle.position.y;
-                    var dz = particle.position.x * particle.position.y - b * particle.position.z;
-                    dx *= particle_uniform.velocity;
-                    dy *= particle_uniform.velocity;
-                    dz *= particle_uniform.velocity;
-                    let float = clamp(0.0, 1.0, f32(distance / max_distance));
-
-                    // if(particle.position.w < 0.0) {
-
-                    // particle.position.x = 0.0;
-                    // particle.position.y = 0.0;
-                    // particle.position.z = 0.0;
-                    // particle.position.w =   10.0;
-                    // }
-                    // particle.dir.x += particle_uniform.velocity * 0.1 * (gen_range(-1.0, 1.0) * 0.1);
-                    // particle.dir.y += particle_uniform.velocity  * 0.1  * (gen_range(-1.0, 1.0)  * 0.1);
-                    // particle.dir.z += particle_uniform.velocity * 0.1  * (gen_range(-1.0, 1.0)  * 0.1);
-                    particle.position.x += dx * particle.dir.x * uniforms.delta_time;
-                    particle.position.y += dy * particle.dir.y * uniforms.delta_time;
-                    particle.position.z += dz * particle.dir.z * uniforms.delta_time;
-                    particle.position.w = float;
-
-                ",*/
                 "
 
-                    var a = 20.0;
-                 var b = 16.0 / 3.0;
-                 var c = 38.0;
+     if (particle_uniform.velocity >= 0.0) {
+        let d = normalize(vec3f(gen_range(-1.0, 1.0), gen_range(-1.0, 1.0), gen_range(-1.0, 1.0))); // Random direction
+        let force = clamp(1.0 / (length(d) + 1.0), 0.1, 5.0); // Avoid division by zero
 
-                 let distance = sqrt(
-                   particle.position.x * particle.position.x +
-                   particle.position.y * particle.position.y +
-                   particle.position.z * particle.position.z
-                   );
-                     let max_distance = sqrt(
-                       100.0*100.0+
-                       100.0*100.0+
-                       100.0*100.0
-                     );
+        particle.dir = d * force; // Move outward in a random direction
+    } else {
+        let ndir = normalize(particle.origin - particle.position.xyz);
+        let force = length(particle.origin - particle.position.xyz) * 0.05; // Scale force based on distance
+        particle.dir = ndir * force;
+    }
 
-                let float = clamp(0.0, 1.0, f32(distance / max_distance));
+particle.velocity = abs(particle_uniform.velocity) * 2.0; 
 
-                 let dx = a * (particle.position.y - particle.position.x);
-                 let dy = particle.position.x * (c - particle.position.z) - particle.position.y;
-                 let dz = particle.position.x * particle.position.y - b * particle.position.z;
-
-                 particle.position.x +=  dx * particle.dir.x * uniforms.delta_time;
-                 particle.position.y +=  dy * particle.dir.y * uniforms.delta_time;
-                 particle.position.z +=  dz * particle.dir.z * uniforms.delta_time;
-                 particle.position.w =  float;
-                             
+particle.position.x += particle.velocity * particle.dir.x * uniforms.delta_time;
+particle.position.y += particle.velocity * particle.dir.y * uniforms.delta_time;
+particle.position.z += particle.velocity * particle.dir.z * uniforms.delta_time;
                 ",
             ));
 
@@ -391,7 +383,7 @@ impl System {
             rpass.set_vertex_buffer(1, self.particle_buffer.slice(..));
             rpass.draw(0..6, 0..PARTICLE_POOLING as u32);
         }
-        self.bloom.render(encoder, &self.view);
+        // self.bloom.render(encoder, &self.view);
         self.blend(encoder, &self.view, &ctx_view, &self.blend_pipeline);
     }
 
@@ -441,7 +433,7 @@ pub fn create_render_pipeline(
             buffers: &[
                 Quad::desc(),
                 wgpu::VertexBufferLayout {
-                    array_stride: 8 * 4,
+                    array_stride: 16 * 4,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &[
                         //position
@@ -450,11 +442,11 @@ pub fn create_render_pipeline(
                             offset: 0,
                             shader_location: 1,
                         },
-                        // wgpu::VertexAttribute { // dir?
-                        //     format: wgpu::VertexFormat::Float32x2,
-                        //     offset: 8,
-                        //     shader_location: 1,
-                        // },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: 16,
+                            shader_location: 2,
+                        },
                     ],
                 },
             ],

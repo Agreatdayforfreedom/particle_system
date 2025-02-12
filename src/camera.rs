@@ -97,7 +97,7 @@ impl Camera3D {
             fovy: 45.0,
             znear: 0.1,
             zfar: 100.0,
-            theta: cgmath::Deg(-90.0).into(),
+            theta: cgmath::Deg(90.0).into(),
             phi: cgmath::Deg(-20.0).into(),
             radius: 90.0,
             uniform,

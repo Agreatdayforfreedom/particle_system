@@ -11,13 +11,15 @@ var<uniform> camera: Camera;
 struct In {
     @location(0) vertex_position: vec2f,
     @location(1) position: vec4f,
+    @location(2) color: vec4f,
+    
 }
 
 struct Out {
-    @builtin(position) clip_position: vec4<f32>,
+    @builtin(position) clip_position: vec4f,
     @location(1) intensity: f32,
     @location(2) vertex_position: vec2f,
-
+    @location(3) color: vec4f,
 }
 
 @vertex
@@ -37,6 +39,7 @@ fn vs_main(in: In) -> Out {
     out.clip_position = proj_view * vec4<f32>(worldPosition, 1.0);
     out.intensity = in.position.w;
     out.vertex_position = in.vertex_position;
+    out.color = in.color;
     return out;
 }
 
@@ -45,12 +48,7 @@ fn fs_main(in: Out) -> @location(0) vec4f {
    let dist = length(in.vertex_position); 
     let alpha = smoothstep(0.5, 0.1, dist);
 
-    var color = mix(
-        vec4(0.0, 0.2, 0.8, 1.0),
-        vec4(0.17, 0.1, 0.2, 1.0),
-        smoothstep(0.0, 0.5, in.intensity)
-    );
-
+    var color = in.color;
     color.a *= alpha;
     return color;
 }
