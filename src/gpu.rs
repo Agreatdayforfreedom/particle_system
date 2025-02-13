@@ -8,6 +8,7 @@ use wgpu::{SurfaceTexture, TextureFormat};
 use winit::{dpi::PhysicalSize, event::*, window::Window};
 
 use crate::egui::EguiRenderer;
+use crate::profiler::{self, Profiler, QueryTimestampPass};
 use crate::system::System;
 use crate::window::InputEvent;
 
@@ -26,17 +27,7 @@ pub struct GpuState {
     window: Rc<Window>,
     egui: EguiRenderer,
     system: System,
-
-    //timing
-    gpu_render_time: f64,
-    query_render_timing: wgpu::QuerySet,
-    query_render_resolve_buffer: wgpu::Buffer,
-    query_render_result_buffer: wgpu::Buffer,
-
-    gpu_update_time: f64,
-    query_update_timing: wgpu::QuerySet,
-    query_update_resolve_buffer: wgpu::Buffer,
-    query_update_result_buffer: wgpu::Buffer,
+    profiler: Profiler,
 }
 
 impl GpuState {
@@ -118,46 +109,10 @@ impl GpuState {
         let system = System::new(&device, &config);
         let egui = EguiRenderer::new(&device, config.format, None, 1, window.as_ref());
 
-        let query_render_timing = device.create_query_set(&wgpu::QuerySetDescriptor {
-            label: Some("Query set render timing"),
-            count: 2,
-            ty: wgpu::QueryType::Timestamp,
-        });
+        let mut profiler = Profiler::default();
 
-        let query_render_resolve_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Query set buffer render timing"),
-            size: 2 * 8,
-            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
-        let query_render_result_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Query resolve buffer render result"),
-            size: query_render_resolve_buffer.size(),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
-        let query_update_timing = device.create_query_set(&wgpu::QuerySetDescriptor {
-            label: Some("Query set update timing"),
-            count: 2,
-            ty: wgpu::QueryType::Timestamp,
-        });
-
-        let query_update_resolve_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Query set buffer update timing"),
-            size: 2 * 8,
-            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
-        let query_update_result_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Query resolve buffer update result"),
-            size: query_render_resolve_buffer.size(),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
+        profiler.add_query_timestamp_pass(QueryTimestampPass::new(Some("Render"), &device));
+        profiler.add_query_timestamp_pass(QueryTimestampPass::new(Some("Compute"), &device));
         Self {
             surface,
             device,
@@ -166,15 +121,7 @@ impl GpuState {
             system,
             egui,
             window,
-
-            gpu_render_time: 0.0,
-            gpu_update_time: 0.0,
-            query_render_resolve_buffer,
-            query_render_result_buffer,
-            query_update_resolve_buffer,
-            query_update_result_buffer,
-            query_render_timing,
-            query_update_timing,
+            profiler,
         }
     }
 
@@ -220,42 +167,12 @@ impl GpuState {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        self.system.render(
-            &mut encoder,
-            &context_view,
-            &self.query_render_timing,
-            &self.query_update_timing,
-        );
+        self.system
+            .render(&mut encoder, &context_view, &self.profiler);
 
-        encoder.resolve_query_set(
-            &self.query_render_timing,
-            0..2,
-            &self.query_render_resolve_buffer,
-            0,
-        );
-
-        encoder.copy_buffer_to_buffer(
-            &self.query_render_resolve_buffer,
-            0,
-            &self.query_render_result_buffer,
-            0,
-            self.query_render_result_buffer.size(),
-        );
-
-        encoder.resolve_query_set(
-            &self.query_update_timing,
-            0..2,
-            &self.query_update_resolve_buffer,
-            0,
-        );
-
-        encoder.copy_buffer_to_buffer(
-            &self.query_update_resolve_buffer,
-            0,
-            &self.query_update_result_buffer,
-            0,
-            self.query_update_result_buffer.size(),
-        );
+        for query in &mut self.profiler.timestamps {
+            query.resolve(&mut encoder);
+        }
 
         {
             self.egui.begin_frame(&self.window);
@@ -268,8 +185,15 @@ impl GpuState {
                 .default_size([200.0, 75.0])
                 .show(self.egui.context(), |ui| {
                     ui.label(format!("FPS: {}", (1.0 / dt.as_secs_f64())));
-                    ui.label(format!("Render time: {}µs", self.gpu_render_time));
-                    ui.label(format!("Update time: {}µs", self.gpu_update_time));
+                    //TODO
+                    ui.label(format!(
+                        "Render time: {}µs",
+                        self.profiler.timestamps.get(0).unwrap().pass_time
+                    ));
+                    ui.label(format!(
+                        "Update time: {}µs",
+                        self.profiler.timestamps.get(1).unwrap().pass_time
+                    ));
 
                     let _ = ui.add(egui::Slider::new(
                         &mut self.system.particle_uniform.data.velocity.vel,
@@ -294,35 +218,14 @@ impl GpuState {
         self.queue.submit(Some(encoder.finish()));
         frame.present();
 
-        // let (sender, receiver) = flume::bounded(1);
+        for query in &mut self.profiler.timestamps {
+            query.map();
 
-        let _ = self
-            .query_render_result_buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, |_| {});
+            self.device
+                .poll(wgpu::MaintainBase::wait())
+                .panic_on_timeout();
 
-        let _ = self
-            .query_update_result_buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, |_| {});
-
-        self.device
-            .poll(wgpu::MaintainBase::wait())
-            .panic_on_timeout();
-        {
-            let slice: &[u8] = &self.query_render_result_buffer.slice(..).get_mapped_range();
-            let timestamps: &[u64] = bytemuck::cast_slice(&slice);
-
-            self.gpu_render_time = (timestamps[1].wrapping_sub(timestamps[0]) / 1000) as f64;
+            query.unmap();
         }
-        self.query_render_result_buffer.unmap();
-
-        {
-            let slice: &[u8] = &self.query_update_result_buffer.slice(..).get_mapped_range();
-            let timestamps: &[u64] = bytemuck::cast_slice(&slice);
-
-            self.gpu_update_time = (timestamps[1].wrapping_sub(timestamps[0]) / 1000) as f64;
-        }
-        self.query_update_result_buffer.unmap();
     }
 }

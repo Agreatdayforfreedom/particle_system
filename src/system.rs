@@ -4,6 +4,7 @@ use std::path::Path;
 
 use crate::attr::{AttrContext, ShaderBuilder};
 use crate::postproc::Bloom;
+use crate::profiler::Profiler;
 use crate::texture::{create_bind_group_texture_layout, Texture};
 use crate::window::InputEvent;
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
     quad::{Quad, VERTICES},
     uniform::Uniform,
 };
-use crate::{texture, uniform};
+use crate::{profiler, texture, uniform};
 
 use cgmath::{InnerSpace, Vector3};
 use naga_oil::compose::{ComposableModuleDescriptor, Composer, NagaModuleDescriptor};
@@ -341,14 +342,13 @@ particle.position.z += particle.velocity * particle.dir.z * uniforms.delta_time;
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         ctx_view: &wgpu::TextureView,
-        query_render_timing: &QuerySet,
-        query_update_timing: &QuerySet,
+        profiler: &Profiler,
     ) {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: None,
                 timestamp_writes: Some(wgpu::ComputePassTimestampWrites {
-                    query_set: query_update_timing,
+                    query_set: &profiler.timestamps.get(1).unwrap().query_timing,
                     beginning_of_pass_write_index: Some(0),
                     end_of_pass_write_index: Some(1),
                 }),
@@ -371,7 +371,7 @@ particle.position.z += particle.velocity * particle.dir.z * uniforms.delta_time;
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
-                    query_set: query_render_timing,
+                    query_set: &profiler.timestamps.get(0).unwrap().query_timing,
                     beginning_of_pass_write_index: Some(0),
                     end_of_pass_write_index: Some(1),
                 }),

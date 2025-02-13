@@ -3,6 +3,7 @@ mod camera;
 mod egui;
 mod gpu;
 mod postproc;
+mod profiler;
 mod quad;
 mod system;
 mod texture;
